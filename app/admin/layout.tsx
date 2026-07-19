@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import LogoutButton from "./logout-button";
 
@@ -12,6 +12,8 @@ interface MenuItem {
   label: string;
   showBadge?: boolean;
   superAdminOnly?: boolean;
+  external?: boolean;
+  highlight?: boolean;
 }
 
 interface MenuGroup {
@@ -20,7 +22,13 @@ interface MenuGroup {
 }
 
 const menuGroups: MenuGroup[] = [
-  { title: null, items: [{ href: "/admin", label: "Dashboard" }] },
+  {
+    title: null,
+    items: [
+      { href: "/admin", label: "Dashboard" },
+      { href: "/kasir", label: "Buka Kasir ↗", external: true, highlight: true },
+    ],
+  },
   {
     title: "Master",
     items: [
@@ -78,10 +86,12 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const supabase = createClient();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [role, setRole] = useState<string | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
   useEffect(() => {
     if (pathname === "/admin/login") return;
@@ -116,6 +126,26 @@ export default function AdminLayout({
     setSidebarOpen(false);
   }, [pathname]);
 
+  function checkScrollable() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const hasMoreBelow = el.scrollHeight - el.scrollTop - el.clientHeight > 8;
+    setShowScrollHint(hasMoreBelow);
+  }
+
+  useEffect(() => {
+    checkScrollable();
+    const el = scrollRef.current;
+    if (!el) return;
+
+    el.addEventListener("scroll", checkScrollable);
+    window.addEventListener("resize", checkScrollable);
+    return () => {
+      el.removeEventListener("scroll", checkScrollable);
+      window.removeEventListener("resize", checkScrollable);
+    };
+  }, [role, pathname]);
+
   if (pathname === "/admin/login") {
     return <>{children}</>;
   }
@@ -140,11 +170,11 @@ export default function AdminLayout({
         )}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white p-4 flex flex-col overflow-y-auto transform transition-transform duration-200 md:relative md:translate-x-0 md:z-auto ${
+          className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white flex flex-col transform transition-transform duration-200 md:relative md:translate-x-0 md:z-auto ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <span className="font-bold text-lg">Maesa Mart Admin</span>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -155,53 +185,59 @@ export default function AdminLayout({
             </button>
           </div>
 
-          <div className="flex-1">
-            {menuGroups.map((group, gi) => {
-              const visibleItems = group.items.filter((item) => !item.superAdminOnly || isSuperAdmin);
-              if (visibleItems.length === 0) return null;
+          <div className="relative flex-1 min-h-0">
+            <div ref={scrollRef} className="h-full overflow-y-auto px-4 pb-2">
+              {menuGroups.map((group, gi) => {
+                const visibleItems = group.items.filter((item) => !item.superAdminOnly || isSuperAdmin);
+                if (visibleItems.length === 0) return null;
 
-              return (
-                <div key={gi} className={gi > 0 ? "mt-3 pt-3 border-t border-white/10" : ""}>
-                  {group.title && (
-                    <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/40">
-                      {group.title}
+                return (
+                  <div key={gi} className={gi > 0 ? "mt-3 pt-3 border-t border-white/10" : ""}>
+                    {group.title && (
+                      <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                        {group.title}
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      {visibleItems.map((item) => {
+                        const active = pathname === item.href;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            target={item.external ? "_blank" : undefined}
+                            rel={item.external ? "noopener noreferrer" : undefined}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-sm ${
+                              item.highlight
+                                ? "bg-brand font-medium"
+                                : active
+                                ? "bg-white/10 font-medium"
+                                : "text-white/80"
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {item.showBadge && pendingCount > 0 && (
+                              <span className="min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-orange-500 text-white text-[11px] font-semibold">
+                                {pendingCount}
+                              </span>
+                            )}
+                          </Link>
+                        );
+                      })}
                     </div>
-                  )}
-                  <div className="space-y-1">
-                    {visibleItems.map((item) => {
-                      const active = pathname === item.href;
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-sm ${
-                            active ? "bg-white/10 font-medium" : "text-white/80"
-                          }`}
-                        >
-                          <span>{item.label}</span>
-                          {item.showBadge && pendingCount > 0 && (
-                            <span className="min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-orange-500 text-white text-[11px] font-semibold">
-                              {pendingCount}
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {showScrollHint && (
+              <div className="pointer-events-none absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-gray-900 to-transparent flex items-end justify-center pb-1">
+                <ChevronDown size={16} className="text-white/50 animate-bounce" />
+              </div>
+            )}
           </div>
 
-          <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
-            <Link
-              href="/kasir"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center px-2.5 py-2 rounded-lg text-sm bg-brand font-medium"
-            >
-              Buka Kasir ↗
-            </Link>
+          <div className="px-4 pt-3 pb-4 border-t border-white/10">
             <LogoutButton />
           </div>
         </aside>
