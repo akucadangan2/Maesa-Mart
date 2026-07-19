@@ -60,7 +60,7 @@ export default async function AdminTransaksiPage({
 
   return (
     <TransaksiClient
-      orders={orders ?? []}
+      orders={(orders ?? []) as any}
       totalCount={count ?? 0}
       pageSize={pageSize}
       currentPage={page}
