@@ -153,6 +153,7 @@ export default function PenggunaClient({ initialStaff }: { initialStaff: Staff[]
                 <input
                   type="email"
                   name="email"
+                  autoComplete="off"
                   required
                   className="border rounded-lg w-full px-3 py-2 text-sm"
                 />
@@ -165,11 +166,18 @@ export default function PenggunaClient({ initialStaff }: { initialStaff: Staff[]
               </label>
               <input
                 type="password"
-                name="password"
+                name="staff_password"
+                autoComplete="new-password"
                 required={!editing}
                 minLength={6}
                 className="border rounded-lg w-full px-3 py-2 text-sm"
               />
+              {editing && (
+                <p className="text-xs text-orange-600 mt-1">
+                  Pastikan kolom ini kosong kalau cuma mau ubah nama/role, jangan sampai
+                  ke-autofill browser.
+                </p>
+              )}
             </div>
 
             <div>
