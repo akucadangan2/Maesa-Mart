@@ -8,7 +8,7 @@ export async function createStaff(formData: FormData) {
 
   const nama = formData.get("nama") as string;
   const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const password = formData.get("staff_password") as string;
   const role = formData.get("role") as string;
 
   const { data, error } = await supabase.auth.admin.createUser({
@@ -37,15 +37,12 @@ export async function createStaff(formData: FormData) {
   revalidatePath("/admin/pengguna");
 }
 
-export async function updateStaff(
-  id: string,
-  formData: FormData
-) {
+export async function updateStaff(id: string, formData: FormData) {
   const supabase = createServiceRoleClient();
 
   const nama = formData.get("nama") as string;
   const role = formData.get("role") as string;
-  const newPassword = (formData.get("password") as string) || null;
+  const newPassword = (formData.get("staff_password") as string) || null;
 
   // Sinkronkan role ke app_metadata (yang dipakai middleware buat cek akses),
   // gabung dengan app_metadata lain yang mungkin sudah ada, bukan menimpa semua.
@@ -67,6 +64,24 @@ export async function updateStaff(
 
 export async function toggleStaffActive(id: string, isAktif: boolean) {
   const supabase = createServiceRoleClient();
+
+  if (!isAktif) {
+    const { data: target } = await supabase.from("staff").select("role").eq("id", id).single();
+
+    if (target?.role === "super_admin") {
+      const { count } = await supabase
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "super_admin")
+        .eq("is_aktif", true);
+
+      if ((count ?? 0) <= 1) {
+        throw new Error(
+          "Gak bisa nonaktifkan Super Admin terakhir yang aktif, bikin/aktifkan Super Admin lain dulu."
+        );
+      }
+    }
+  }
 
   // ban_duration "none" = aktifkan kembali, durasi panjang = nonaktifkan login
   const { error: authError } = await supabase.auth.admin.updateUserById(id, {
