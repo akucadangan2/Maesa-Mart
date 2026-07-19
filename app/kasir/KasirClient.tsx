@@ -878,10 +878,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                                     {detail.catatan}
                                   </div>
                                 )}
-                                {(detail.customers?.no_hp || detail.guest_no_hp) && (
+                                {((detail.customers as any)?.no_hp || detail.guest_no_hp) && (
                                   <div className="flex items-center gap-1.5 text-xs text-gray-600 pt-1 border-t">
                                     <Phone size={12} />
-                                    {detail.customers?.no_hp ?? detail.guest_no_hp}
+                                    {(detail.customers as any)?.no_hp ?? detail.guest_no_hp}
                                   </div>
                                 )}
                               </>
