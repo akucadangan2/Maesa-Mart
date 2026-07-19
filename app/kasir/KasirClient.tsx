@@ -13,6 +13,8 @@ import {
   Pause,
   ListChecks,
   X,
+  Loader2,
+  Phone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { downloadStruk } from "@/lib/strukGenerator";
@@ -21,6 +23,7 @@ import {
   createPosSale,
   getRiwayatKasirHariIni,
   getOnlineOrdersRingkas,
+  getOnlineOrderDetail,
   type KasirSearchResult,
   type KasirUnitOption,
 } from "./actions";
@@ -79,8 +82,17 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
   const [riwayatOpen, setRiwayatOpen] = useState(false);
   const [riwayat, setRiwayat] = useState<Awaited<ReturnType<typeof getRiwayatKasirHariIni>>>([]);
+
   const [onlineOpen, setOnlineOpen] = useState(false);
+  const [onlinePendingCount, setOnlinePendingCount] = useState(0);
+  const [onlineFilter, setOnlineFilter] = useState<"pending" | "semua">("pending");
   const [onlineOrders, setOnlineOrders] = useState<Awaited<ReturnType<typeof getOnlineOrdersRingkas>>>([]);
+  const [onlineLoading, setOnlineLoading] = useState(false);
+  const [expandedOnlineId, setExpandedOnlineId] = useState<string | null>(null);
+  const [onlineDetailCache, setOnlineDetailCache] = useState
+    Record<string, Awaited<ReturnType<typeof getOnlineOrderDetail>>>
+  >({});
+  const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -96,6 +108,47 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     }, 250);
     return () => clearTimeout(t);
   }, [query]);
+
+  // Badge angka pesanan yang perlu validasi, update sendiri real-time
+  useEffect(() => {
+    async function loadPendingCount() {
+      const { count } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("channel", "online")
+        .eq("status_pesanan", "menunggu_validasi");
+      setOnlinePendingCount(count ?? 0);
+    }
+    loadPendingCount();
+
+    const channel = supabase
+      .channel("kasir-online-orders")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+        loadPendingCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // List di dalam modal ikut refresh otomatis kalau lagi kebuka
+  useEffect(() => {
+    if (!onlineOpen) return;
+    const channel = supabase
+      .channel("kasir-online-orders-modal")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+        getOnlineOrdersRingkas(onlineFilter).then(setOnlineOrders);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineOpen, onlineFilter]);
 
   function tambahKeCart(item: KasirSearchResult) {
     const unit = item.units.find((u) => unitKeyOf(u) === item.matchedUnitKey) ?? item.units[0];
@@ -243,9 +296,33 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     setRiwayat(await getRiwayatKasirHariIni(staffId));
   }
 
-  async function bukaOnline() {
+  async function bukaOnline(filter: "pending" | "semua" = onlineFilter) {
     setOnlineOpen(true);
-    setOnlineOrders(await getOnlineOrdersRingkas());
+    setOnlineFilter(filter);
+    setOnlineLoading(true);
+    setExpandedOnlineId(null);
+    try {
+      setOnlineOrders(await getOnlineOrdersRingkas(filter));
+    } finally {
+      setOnlineLoading(false);
+    }
+  }
+
+  async function toggleExpandOnline(id: string) {
+    if (expandedOnlineId === id) {
+      setExpandedOnlineId(null);
+      return;
+    }
+    setExpandedOnlineId(id);
+    if (!onlineDetailCache[id]) {
+      setLoadingDetailId(id);
+      try {
+        const detail = await getOnlineOrderDetail(id);
+        setOnlineDetailCache((prev) => ({ ...prev, [id]: detail }));
+      } finally {
+        setLoadingDetailId(null);
+      }
+    }
   }
 
   async function handleLogout() {
@@ -263,11 +340,16 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={bukaOnline}
-            className="flex items-center gap-1.5 text-xs border rounded-full px-3 py-1.5"
+            onClick={() => bukaOnline()}
+            className="relative flex items-center gap-1.5 text-xs border rounded-full px-3 py-1.5"
           >
             <Package size={13} />
             <span className="hidden sm:inline">Pesanan Online</span>
+            {onlinePendingCount > 0 && (
+              <span className="flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-500 text-white text-[10px] font-semibold">
+                {onlinePendingCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setPendingListOpen(true)}
@@ -688,46 +770,132 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
       {onlineOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 pb-3 shrink-0">
               <h2 className="font-semibold">Pesanan Online</h2>
               <button onClick={() => setOnlineOpen(false)} className="text-gray-400">
                 <X size={18} />
               </button>
             </div>
-            {onlineOrders.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Belum ada pesanan online.</p>
-            ) : (
-              <div className="space-y-2">
-                {onlineOrders.map((o: any) => (
-                  <div key={o.id} className="border rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono text-xs">{o.nomor_order}</span>
-                      <span className="font-semibold text-sm">
-                        Rp{o.total_jual.toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500 mb-1.5">
-                      {o.customers?.nama ?? o.guest_nama ?? "Tamu"}
-                    </div>
-                    <div className="flex gap-1.5">
-                      <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full ${
-                          o.status_pembayaran === "lunas"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-yellow-100 text-yellow-700"
-                        }`}
-                      >
-                        {o.status_pembayaran === "lunas" ? "Sudah Bayar" : "Belum/Menunggu Bayar"}
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                        {o.status_pesanan}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+
+            <div className="flex gap-2 px-5 pb-3 shrink-0">
+              <button
+                onClick={() => bukaOnline("pending")}
+                className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+                  onlineFilter === "pending" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
+                }`}
+              >
+                Perlu Validasi {onlinePendingCount > 0 && `(${onlinePendingCount})`}
+              </button>
+              <button
+                onClick={() => bukaOnline("semua")}
+                className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+                  onlineFilter === "semua" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
+                }`}
+              >
+                Semua (30 Terbaru)
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 pb-5 flex-1">
+              {onlineLoading ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500 py-10">
+                  <Loader2 size={16} className="animate-spin" />
+                  Memuat...
+                </div>
+              ) : onlineOrders.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-10">
+                  {onlineFilter === "pending" ? "Gak ada pesanan yang perlu divalidasi." : "Belum ada pesanan online."}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {onlineOrders.map((o: any) => {
+                    const isExpanded = expandedOnlineId === o.id;
+                    const detail = onlineDetailCache[o.id];
+                    const isLoadingThis = loadingDetailId === o.id;
+
+                    return (
+                      <div key={o.id} className="border rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => toggleExpandOnline(o.id)}
+                          className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-mono text-xs">{o.nomor_order}</div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {o.customers?.nama ?? o.guest_nama ?? "Tamu"} ·{" "}
+                              {new Date(o.created_at).toLocaleString("id-ID", {
+                                day: "2-digit",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-semibold text-sm">
+                              Rp{o.total_jual.toLocaleString("id-ID")}
+                            </span>
+                          </div>
+                        </button>
+
+                        <div className="px-3 pb-2 flex gap-1.5">
+                          <span
+                            className={`text-[11px] px-2 py-0.5 rounded-full ${
+                              o.status_pembayaran === "lunas"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-yellow-100 text-yellow-700"
+                            }`}
+                          >
+                            {o.status_pembayaran === "lunas" ? "Sudah Bayar" : "Belum/Menunggu Bayar"}
+                          </span>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                            {o.status_pesanan.replace("_", " ")}
+                          </span>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="border-t bg-gray-50 p-3 space-y-2">
+                            {isLoadingThis ? (
+                              <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+                                <Loader2 size={13} className="animate-spin" />
+                                Memuat detail...
+                              </div>
+                            ) : detail ? (
+                              <>
+                                <div className="space-y-1">
+                                  {detail.order_items.map((it: any, i: number) => (
+                                    <div key={i} className="flex justify-between text-xs">
+                                      <span>
+                                        {it.nama_produk_snapshot}{" "}
+                                        <span className="text-gray-400">x{it.qty}</span>
+                                      </span>
+                                      <span className="font-mono">Rp{it.subtotal.toLocaleString("id-ID")}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {detail.catatan && (
+                                  <div className="text-xs text-gray-600 pt-1 border-t">
+                                    <span className="text-gray-400">Catatan: </span>
+                                    {detail.catatan}
+                                  </div>
+                                )}
+                                {(detail.customers?.no_hp || detail.guest_no_hp) && (
+                                  <div className="flex items-center gap-1.5 text-xs text-gray-600 pt-1 border-t">
+                                    <Phone size={12} />
+                                    {detail.customers?.no_hp ?? detail.guest_no_hp}
+                                  </div>
+                                )}
+                              </>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

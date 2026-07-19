@@ -242,10 +242,9 @@ export async function getRiwayatKasirHariIni(kasirId: string) {
   return data ?? [];
 }
 
-export async function getOnlineOrdersRingkas() {
+export async function getOnlineOrdersRingkas(filter: "pending" | "semua" = "pending") {
   const supabase = createServiceRoleClient();
-
-  const { data } = await supabase
+  let query = supabase
     .from("orders")
     .select(
       "id, nomor_order, status_pesanan, status_pembayaran, metode_bayar, total_jual, created_at, customers(nama), guest_nama"
@@ -254,5 +253,24 @@ export async function getOnlineOrdersRingkas() {
     .order("created_at", { ascending: false })
     .limit(30);
 
+  if (filter === "pending") {
+    query = query.eq("status_pesanan", "menunggu_validasi");
+  }
+
+  const { data } = await query;
   return data ?? [];
+}
+
+export async function getOnlineOrderDetail(id: string) {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select(
+      "id, nomor_order, status_pesanan, status_pembayaran, metode_bayar, catatan, total_jual, created_at, customers(nama, no_hp), guest_nama, guest_no_hp, order_items(nama_produk_snapshot, qty, subtotal)"
+    )
+    .eq("id", id)
+    .single();
+
+  if (error || !data) throw new Error("Gagal memuat detail pesanan.");
+  return data;
 }
