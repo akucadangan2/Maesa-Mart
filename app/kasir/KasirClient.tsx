@@ -89,9 +89,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const [onlineOrders, setOnlineOrders] = useState<Awaited<ReturnType<typeof getOnlineOrdersRingkas>>>([]);
   const [onlineLoading, setOnlineLoading] = useState(false);
   const [expandedOnlineId, setExpandedOnlineId] = useState<string | null>(null);
-  const [onlineDetailCache, setOnlineDetailCache] = useState
-    Record<string, Awaited<ReturnType<typeof getOnlineOrderDetail>>>
-  >({});
+  const [onlineDetailCache, setOnlineDetailCache] = useState<Record<string, Awaited<ReturnType<typeof getOnlineOrderDetail>>>>({});
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
 
   useEffect(() => {
