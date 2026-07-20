@@ -41,7 +41,7 @@ export async function createDokuPayment(orderId: string): Promise<string> {
 
   const namaCustomer = (order.customers as any)?.nama ?? order.guest_nama ?? "Pelanggan";
 
-    const body = {
+  const body = {
     order: {
       amount: Math.round(order.total_jual),
       invoice_number: order.nomor_order,
@@ -77,8 +77,11 @@ export async function createDokuPayment(orderId: string): Promise<string> {
   const data = await res.json();
 
   if (!res.ok || !data?.response?.payment?.url) {
+    console.error("DOKU create payment gagal, status:", res.status);
+    console.error("DOKU response:", JSON.stringify(data));
     throw new Error(
-      "Gagal membuat pembayaran DOKU: " + (data?.error_messages?.join(", ") ?? "Terjadi kesalahan.")
+      "Gagal membuat pembayaran DOKU: " +
+        (data?.error_messages?.join(", ") ?? data?.message?.join?.(", ") ?? JSON.stringify(data))
     );
   }
 
