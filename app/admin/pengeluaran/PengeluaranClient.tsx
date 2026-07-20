@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
 import { searchProdukPengeluaran, createExpense, type PengeluaranSearchResult } from "./actions";
+import type { Supplier } from "@/lib/types";
 
 interface CartItem {
   product_id: string | null;
@@ -14,10 +15,14 @@ interface CartItem {
   fotoPreview: string | null;
 }
 
-export default function PengeluaranClient() {
+export default function PengeluaranClient({ suppliers }: { suppliers: Supplier[] }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PengeluaranSearchResult[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  const [sumberMode, setSumberMode] = useState<"supplier" | "lainnya">("supplier");
+  const [supplierId, setSupplierId] = useState("");
+  const [sumberLainnya, setSumberLainnya] = useState("");
 
   const [namaUmum, setNamaUmum] = useState("");
   const [nominalUmum, setNominalUmum] = useState("");
@@ -97,11 +102,22 @@ export default function PengeluaranClient() {
       setErrorMsg("Belum ada item.");
       return;
     }
+    if (sumberMode === "supplier" && !supplierId) {
+      setErrorMsg("Pilih supplier dulu, atau pindah ke tab 'Sumber Lain'.");
+      return;
+    }
+    if (sumberMode === "lainnya" && !sumberLainnya.trim()) {
+      setErrorMsg("Isi nama sales/toko dulu.");
+      return;
+    }
 
     setSubmitting(true);
     try {
       const formData = new FormData();
       formData.set("count", String(cart.length));
+      formData.set("supplier_id", sumberMode === "supplier" ? supplierId : "");
+      formData.set("sumber_lainnya", sumberMode === "lainnya" ? sumberLainnya.trim() : "");
+
       cart.forEach((it, i) => {
         formData.set(`items[${i}][product_id]`, it.product_id ?? "");
         formData.set(`items[${i}][nama]`, it.nama);
@@ -114,6 +130,8 @@ export default function PengeluaranClient() {
       await createExpense(formData);
       setSuccessMsg("Pengeluaran tersimpan.");
       setCart([]);
+      setSupplierId("");
+      setSumberLainnya("");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {
@@ -126,7 +144,53 @@ export default function PengeluaranClient() {
       <h1 className="text-xl font-bold mb-4">Pengeluaran Baru</h1>
 
       <div className="bg-white rounded-lg border p-4 mb-4">
-        <p className="text-sm font-medium mb-2">Barang (nambah stok, tanpa lewat supplier resmi)</p>
+        <p className="text-sm font-medium mb-2">Sumber Beli</p>
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setSumberMode("supplier")}
+            className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+              sumberMode === "supplier" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
+            }`}
+          >
+            Dari Supplier
+          </button>
+          <button
+            type="button"
+            onClick={() => setSumberMode("lainnya")}
+            className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+              sumberMode === "lainnya" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
+            }`}
+          >
+            Sumber Lain (Sales/Toko)
+          </button>
+        </div>
+
+        {sumberMode === "supplier" ? (
+          <select
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            className="border rounded-lg w-full px-3 py-2 text-sm bg-white"
+          >
+            <option value="">Pilih supplier</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nama}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            value={sumberLainnya}
+            onChange={(e) => setSumberLainnya(e.target.value)}
+            placeholder="Nama sales / toko lain (contoh: Toko Berkah, Sales Indomie)"
+            className="border rounded-lg w-full px-3 py-2 text-sm"
+          />
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg border p-4 mb-4">
+        <p className="text-sm font-medium mb-2">Barang (nambah stok)</p>
         <div className="relative mb-3">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input

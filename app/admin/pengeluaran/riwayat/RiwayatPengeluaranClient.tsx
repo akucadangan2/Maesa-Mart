@@ -8,6 +8,9 @@ interface ExpenseListRow {
   id: string;
   created_at: string;
   total_pengeluaran: number;
+  supplier_id: string | null;
+  sumber_lainnya: string | null;
+  suppliers: { nama: string } | null;
   expense_items: { id: string }[];
 }
 
@@ -69,7 +72,9 @@ export default function RiwayatPengeluaranClient({ expenses }: { expenses: Expen
                   <div className="text-sm font-medium">
                     {new Date(exp.created_at).toLocaleDateString("id-ID")}
                   </div>
-                  <div className="text-xs text-gray-500">{exp.expense_items.length} item</div>
+                  <div className="text-xs text-gray-500">
+                    {exp.suppliers?.nama ?? exp.sumber_lainnya ?? "-"} · {exp.expense_items.length} item
+                  </div>
                 </div>
                 <span className="font-semibold text-sm">
                   Rp{exp.total_pengeluaran.toLocaleString("id-ID")}

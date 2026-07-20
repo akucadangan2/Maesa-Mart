@@ -6,7 +6,7 @@ export default async function DataPengeluaranPage() {
 
   const { data: expenses } = await supabase
     .from("expenses")
-    .select("*, expense_items(id)")
+    .select("*, expense_items(id), suppliers(nama)")
     .order("created_at", { ascending: false })
     .limit(100);
 

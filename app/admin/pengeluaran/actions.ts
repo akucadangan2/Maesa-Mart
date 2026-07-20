@@ -37,6 +37,8 @@ export async function searchProdukPengeluaran(query: string): Promise<Pengeluara
 export async function createExpense(formData: FormData) {
   const supabase = createServiceRoleClient();
   const count = Number(formData.get("count") ?? 0);
+  const supplierId = (formData.get("supplier_id") as string) || null;
+  const sumberLainnya = (formData.get("sumber_lainnya") as string) || null;
 
   interface ItemToInsert {
     product_id: string | null;
@@ -78,7 +80,11 @@ export async function createExpense(formData: FormData) {
 
   const { data: expense, error: expenseError } = await supabase
     .from("expenses")
-    .insert({ total_pengeluaran: totalPengeluaran })
+    .insert({
+      total_pengeluaran: totalPengeluaran,
+      supplier_id: supplierId,
+      sumber_lainnya: sumberLainnya,
+    })
     .select()
     .single();
 
@@ -90,8 +96,6 @@ export async function createExpense(formData: FormData) {
   const { error: itemsError } = await supabase.from("expense_items").insert(rows);
   if (itemsError) throw new Error("Gagal menyimpan item: " + itemsError.message);
 
-  // Item yang terhubung ke produk otomatis nambah stok & update harga modal,
-  // sama seperti Pembelian, karena ini juga sumber stok masuk.
   for (const it of items) {
     if (!it.product_id) continue;
 
