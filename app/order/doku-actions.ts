@@ -41,7 +41,7 @@ export async function createDokuPayment(orderId: string): Promise<string> {
 
   const namaCustomer = (order.customers as any)?.nama ?? order.guest_nama ?? "Pelanggan";
 
-  const body = {
+    const body = {
     order: {
       amount: Math.round(order.total_jual),
       invoice_number: order.nomor_order,
@@ -53,6 +53,9 @@ export async function createDokuPayment(orderId: string): Promise<string> {
     },
     customer: {
       name: namaCustomer,
+    },
+    additional_info: {
+      override_notification_url: `${appUrl}/api/doku/webhook`,
     },
   };
 
