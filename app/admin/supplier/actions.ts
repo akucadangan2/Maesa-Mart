@@ -14,6 +14,7 @@ export async function createSupplier(formData: FormData) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/admin/supplier");
+  revalidatePath("/admin/pengeluaran");
 }
 
 export async function updateSupplier(id: string, formData: FormData) {
@@ -30,6 +31,7 @@ export async function updateSupplier(id: string, formData: FormData) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/admin/supplier");
+  revalidatePath("/admin/pengeluaran");
 }
 
 export async function deleteSupplier(id: string) {
@@ -43,4 +45,5 @@ export async function deleteSupplier(id: string) {
   }
 
   revalidatePath("/admin/supplier");
+  revalidatePath("/admin/pengeluaran");
 }
