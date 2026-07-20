@@ -19,6 +19,16 @@ function hargaEfektif(p: Product) {
     : p.harga_jual;
 }
 
+function formatRibuan(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("id-ID");
+}
+
+function parseRibuan(value: string) {
+  return Number(value.replace(/\D/g, "")) || 0;
+}
+
 export default function ProdukClient({
   initialProducts,
   categories,
@@ -30,6 +40,9 @@ export default function ProdukClient({
   const [editing, setEditing] = useState<Product | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [hargaModal, setHargaModal] = useState("");
+  const [hargaJual, setHargaJual] = useState("");
 
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
@@ -60,6 +73,8 @@ export default function ProdukClient({
   function openTambah() {
     setEditing(null);
     setErrorMsg(null);
+    setHargaModal("");
+    setHargaJual("");
     setUnits([]);
     setUnitFormOpen(false);
     resetUnitForm();
@@ -69,6 +84,8 @@ export default function ProdukClient({
   async function openEdit(product: Product) {
     setEditing(product);
     setErrorMsg(null);
+    setHargaModal(formatRibuan(String(product.harga_modal)));
+    setHargaJual(formatRibuan(String(product.harga_jual)));
     setUnitFormOpen(false);
     resetUnitForm();
     setFormOpen(true);
@@ -85,6 +102,8 @@ export default function ProdukClient({
     e.preventDefault();
     setErrorMsg(null);
     const formData = new FormData(e.currentTarget);
+    formData.set("harga_modal", String(parseRibuan(hargaModal)));
+    formData.set("harga_jual", String(parseRibuan(hargaJual)));
     try {
       if (editing) {
         await updateProduct(editing.id, formData);
@@ -119,8 +138,8 @@ export default function ProdukClient({
       formData.set("satuan", finalSatuanValue.trim());
       formData.set("konversi", unitKonversi);
       formData.set("kode_barcode", unitBarcode.trim());
-      formData.set("harga_beli", unitHargaBeli);
-      formData.set("harga_jual", unitHargaJual);
+      formData.set("harga_beli", String(parseRibuan(unitHargaBeli)));
+      formData.set("harga_jual", String(parseRibuan(unitHargaJual)));
 
       await createProductUnit(editing.id, formData);
       const data = await getProductUnits(editing.id);
@@ -295,21 +314,25 @@ export default function ProdukClient({
                   <div>
                     <label className="text-sm font-medium block mb-1">Harga Modal</label>
                     <input
-                      type="number"
-                      name="harga_modal"
-                      defaultValue={editing?.harga_modal ?? 0}
+                      type="text"
+                      inputMode="numeric"
+                      value={hargaModal}
+                      onChange={(e) => setHargaModal(formatRibuan(e.target.value))}
+                      placeholder="0"
                       required
-                      className="border rounded-lg w-full px-3 py-2 text-sm"
+                      className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
                     />
                   </div>
                   <div>
                     <label className="text-sm font-medium block mb-1">Harga Jual</label>
                     <input
-                      type="number"
-                      name="harga_jual"
-                      defaultValue={editing?.harga_jual ?? 0}
+                      type="text"
+                      inputMode="numeric"
+                      value={hargaJual}
+                      onChange={(e) => setHargaJual(formatRibuan(e.target.value))}
+                      placeholder="0"
                       required
-                      className="border rounded-lg w-full px-3 py-2 text-sm"
+                      className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
                     />
                   </div>
                 </div>
@@ -446,18 +469,20 @@ export default function ProdukClient({
 
                         <div className="grid grid-cols-2 gap-2">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={unitHargaBeli}
-                            onChange={(e) => setUnitHargaBeli(e.target.value)}
+                            onChange={(e) => setUnitHargaBeli(formatRibuan(e.target.value))}
                             placeholder="Harga beli"
-                            className="border rounded-lg px-2 py-1.5 text-xs"
+                            className="border rounded-lg px-2 py-1.5 text-xs font-mono"
                           />
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={unitHargaJual}
-                            onChange={(e) => setUnitHargaJual(e.target.value)}
+                            onChange={(e) => setUnitHargaJual(formatRibuan(e.target.value))}
                             placeholder="Harga jual (opsional)"
-                            className="border rounded-lg px-2 py-1.5 text-xs"
+                            className="border rounded-lg px-2 py-1.5 text-xs font-mono"
                           />
                         </div>
 
