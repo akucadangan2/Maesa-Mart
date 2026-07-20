@@ -127,6 +127,12 @@ export default function TransaksiClient({
   }
 
   function handlePesanan(id: string, status: StatusPesanan) {
+    // Update state cache lokal agar UI modal detail langsung berubah
+    setDetailCache((prev) => {
+      if (!prev[id]) return prev;
+      return { ...prev, [id]: { ...prev[id], status_pesanan: status } };
+    });
+
     startTransition(async () => {
       await updateStatusPesanan(id, status);
       router.refresh();
@@ -134,6 +140,12 @@ export default function TransaksiClient({
   }
 
   function handlePembayaran(id: string, status: StatusPembayaran) {
+    // Update state cache lokal agar UI modal detail langsung berubah
+    setDetailCache((prev) => {
+      if (!prev[id]) return prev;
+      return { ...prev, [id]: { ...prev[id], status_pembayaran: status } };
+    });
+
     startTransition(async () => {
       await updateStatusPembayaran(id, status);
       router.refresh();

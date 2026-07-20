@@ -15,6 +15,7 @@ import {
   X,
   Loader2,
   Phone,
+  MapPin,
   Image as ImageIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -120,17 +121,21 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const [onlineDetailCache, setOnlineDetailCache] = useState<Record<string, Awaited<ReturnType<typeof getOnlineOrderDetail>>>>({});
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
 
+  const searchSeq = useRef(0);
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   useEffect(() => {
+    const seq = ++searchSeq.current;
     const t = setTimeout(async () => {
-      if (query.trim()) {
-        setResults(await searchKasirItems(query));
-      } else {
+      if (!query.trim()) {
         setResults([]);
+        return;
       }
+      const data = await searchKasirItems(query);
+      if (seq === searchSeq.current) setResults(data);
     }, 250);
     return () => clearTimeout(t);
   }, [query]);
@@ -400,7 +405,6 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
       </header>
 
       <div className="max-w-3xl mx-auto p-4">
-        {/* Bar invoice + total besar, persis kayak referensi */}
         <div className="flex flex-col md:flex-row gap-3 mb-4">
           <div className="flex-1 bg-white border rounded-xl p-4 grid grid-cols-3 gap-3">
             <div>
@@ -462,7 +466,6 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           )}
         </div>
 
-        {/* Tabel keranjang, kayak referensi */}
         <div className="bg-white rounded-xl border overflow-hidden mb-4">
           {cart.length === 0 ? (
             <p className="text-sm text-gray-400 italic text-center py-10">
@@ -902,7 +905,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                 <div className="space-y-2">
                   {onlineOrders.map((o: any) => {
                     const isExpanded = expandedOnlineId === o.id;
-                    const detail = onlineDetailCache[o.id];
+                    const detail = onlineDetailCache[o.id] as any;
                     const isLoadingThis = loadingDetailId === o.id;
 
                     return (
@@ -971,18 +974,19 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                                     {detail.catatan}
                                   </div>
                                 )}
-                                {(detail as any).metode_ambil === "diantar" && (
-                                  <div className="text-xs bg-orange-50 border border-orange-100 rounded p-2">
-                                    <div className="font-medium text-orange-700">🛵 Minta Diantar</div>
-                                    {(detail as any).alamat_pengantaran && (
-                                      <div>{(detail as any).alamat_pengantaran}</div>
-                                    )}
-                                    {(detail as any).lokasi_lat && (detail as any).lokasi_lng && (
+                                {detail.metode_ambil === "diantar" && (
+                                  <div className="text-xs bg-orange-50 border border-orange-100 rounded p-2 space-y-1">
+                                    <div className="flex items-center gap-1 font-medium text-orange-700">
+                                      <MapPin size={12} />
+                                      Minta Diantar
+                                    </div>
+                                    {detail.alamat_pengantaran && <div>{detail.alamat_pengantaran}</div>}
+                                    {detail.lokasi_lat && detail.lokasi_lng && (
                                       <a
-                                        href={`https://www.google.com/maps?q=${(detail as any).lokasi_lat},${(detail as any).lokasi_lng}`}
+                                        href={`https://www.google.com/maps?q=${detail.lokasi_lat},${detail.lokasi_lng}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-brand underline block mt-1"
+                                        className="text-brand underline block"
                                       >
                                         Buka lokasi di Google Maps
                                       </a>
