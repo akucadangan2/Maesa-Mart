@@ -30,7 +30,7 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
-const STORAGE_KEY = "maesa_barcode_label_pref_v2";
+const STORAGE_KEY = "maesa_barcode_label_pref_v3";
 
 type PrintMode = "single" | "grid";
 
@@ -95,8 +95,7 @@ export default function BarcodeClient() {
   const [customWidth, setCustomWidth] = useState("40");
   const [customHeight, setCustomHeight] = useState("30");
 
-  // Default diisi persis sesuai hasil cek driver Postek: 120.3mm total, 3 kolom, tinggi 22.9mm
-  const [gridTotalWidth, setGridTotalWidth] = useState("120.3");
+  const [gridTotalWidth, setGridTotalWidth] = useState("71.9");
   const [gridColumns, setGridColumns] = useState("3");
   const [gridRowHeight, setGridRowHeight] = useState("22.9");
 
@@ -344,7 +343,7 @@ export default function BarcodeClient() {
           ) : (
             <div className="bg-gray-50 border rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-2">
-                Diisi sesuai hasil cek driver printer (PaperWidth/PaperLength). Ubah kalau perlu.
+                Diisi sesuai info driver BarTender (Stock size). Ubah kalau perlu.
               </p>
               <div className="grid grid-cols-3 gap-2 max-w-md">
                 <div>
@@ -650,7 +649,7 @@ export default function BarcodeClient() {
         }
         @media print {
           @page {
-            size: ${mode === "grid" ? `${totalWidthNum}mm ${rowHeightNum}mm` : `${preset.widthMm}mm auto`};
+            size: ${mode === "grid" ? `${totalWidthNum}mm` : `${preset.widthMm}mm`} auto;
             margin: 0;
           }
           .no-print {
@@ -658,12 +657,6 @@ export default function BarcodeClient() {
           }
           .print-area {
             display: block !important;
-          }
-          .label-row {
-            page-break-after: always;
-          }
-          .label-row:last-child {
-            page-break-after: auto;
           }
         }
       `}</style>
