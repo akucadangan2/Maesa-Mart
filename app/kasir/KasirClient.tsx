@@ -56,6 +56,16 @@ function selectedUnit(line: CartLine): KasirUnitOption {
   return line.units.find((u) => unitKeyOf(u) === line.selectedUnitKey) ?? line.units[0];
 }
 
+function formatRibuan(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("id-ID");
+}
+
+function parseRibuan(value: string) {
+  return Number(value.replace(/\D/g, "")) || 0;
+}
+
 export default function KasirClient({ staffId, staffNama }: { staffId: string; staffNama: string }) {
   const router = useRouter();
   const supabase = createClient();
@@ -203,9 +213,9 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   }
 
   const subtotal = cart.reduce((sum, line) => sum + selectedUnit(line).harga_jual * line.qty, 0);
-  const diskonNum = Number(diskonManual) || 0;
+  const diskonNum = parseRibuan(diskonManual);
   const totalSetelahDiskon = Math.max(0, subtotal - diskonNum);
-  const uangDiterimaNum = Number(uangDiterima) || 0;
+  const uangDiterimaNum = parseRibuan(uangDiterima);
   const kembalian = metodeBayar === "tunai" ? uangDiterimaNum - totalSetelahDiskon : null;
 
   function resetSemua() {
@@ -478,9 +488,9 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
         {cart.length > 0 && (
           <div className="bg-white rounded-xl border p-4 space-y-3">
-            <div className="flex justify-between text-lg font-semibold">
-              <span>Total</span>
-              <span className="font-mono">Rp{subtotal.toLocaleString("id-ID")}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Total</span>
+              <span className="font-mono text-2xl font-bold">Rp{subtotal.toLocaleString("id-ID")}</span>
             </div>
 
             <div className="flex gap-2">
@@ -513,9 +523,9 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
               </button>
             </div>
 
-            <div className="bg-brand text-white rounded-xl p-4 text-center mb-4">
-              <div className="text-xs text-white/80 mb-1">Total Bayar</div>
-              <div className="text-3xl font-bold font-mono">
+            <div className="bg-brand text-white rounded-xl p-5 text-center mb-4">
+              <div className="text-sm text-white/80 mb-1">Total Bayar</div>
+              <div className="text-4xl font-bold font-mono">
                 Rp{totalSetelahDiskon.toLocaleString("id-ID")}
               </div>
             </div>
@@ -530,11 +540,12 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
               <div>
                 <label className="text-xs font-medium block mb-1">Diskon (Rp)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={diskonManual}
-                  onChange={(e) => setDiskonManual(e.target.value)}
+                  onChange={(e) => setDiskonManual(formatRibuan(e.target.value))}
                   placeholder="0"
-                  className="border rounded-lg w-full px-3 py-2 text-sm"
+                  className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
                 />
               </div>
               <div>
@@ -574,14 +585,19 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
               <div className="mb-3">
                 <label className="text-xs font-medium block mb-1">Uang Diterima</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={uangDiterima}
-                  onChange={(e) => setUangDiterima(e.target.value)}
-                  className="border rounded-lg w-full px-3 py-2 text-sm"
+                  onChange={(e) => setUangDiterima(formatRibuan(e.target.value))}
+                  placeholder="0"
+                  className="border rounded-lg w-full px-3 py-3 text-lg font-mono font-semibold"
                 />
                 {kembalian !== null && kembalian >= 0 && (
-                  <div className="text-sm text-brand mt-1">
-                    Kembalian: Rp{kembalian.toLocaleString("id-ID")}
+                  <div className="mt-2 bg-brand/10 rounded-lg p-3 text-center">
+                    <div className="text-xs text-brand/70">Kembalian</div>
+                    <div className="text-2xl font-bold font-mono text-brand">
+                      Rp{kembalian.toLocaleString("id-ID")}
+                    </div>
                   </div>
                 )}
               </div>
