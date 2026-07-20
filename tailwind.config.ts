@@ -14,8 +14,8 @@ const config: Config = {
         ink: "#1B2420",
         "ink-soft": "#5B6660",
         brand: {
-          DEFAULT: "#1F5A44",
-          dark: "#143C2D",
+          DEFAULT: "#1E56A0",
+          dark: "#123D73",
         },
         accent: {
           DEFAULT: "#E4A93A",

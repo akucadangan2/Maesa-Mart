@@ -13,7 +13,7 @@ export default function QrClient({ orderUrl }: { orderUrl: string }) {
       QRCode.toCanvas(canvasRef.current, orderUrl, {
         width: 320,
         margin: 2,
-        color: { dark: "#1F5A44", light: "#FFFFFF" },
+        color: { dark: "#1E56A0", light: "#FFFFFF" },
       });
     }
   }, [orderUrl]);

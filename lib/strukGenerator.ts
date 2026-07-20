@@ -69,7 +69,7 @@ export async function downloadStruk(order: StrukOrder) {
     ctx.drawImage(logo, (width - logoW) / 2, y, logoW, logoH);
     y += logoH + 14;
   } else {
-    ctx.fillStyle = "#1F5A44";
+    ctx.fillStyle = "#1E56A0";
     ctx.font = "bold 18px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("Maesa Mart", width / 2, y + 18);

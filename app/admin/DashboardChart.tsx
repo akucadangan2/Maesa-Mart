@@ -17,7 +17,7 @@ export default function DashboardChart({ data }: { data: { label: string; laba: 
             tickFormatter={(v) => `${Math.round(v / 1000).toLocaleString("id-ID")}rb`}
           />
           <Tooltip formatter={(value: number) => `Rp${value.toLocaleString("id-ID")}`} />
-          <Area type="monotone" dataKey="laba" stroke="#1F5A44" fill="#1F5A4433" strokeWidth={2} />
+          <Area type="monotone" dataKey="laba" stroke="#1E56A0" fill="#1E56A033" strokeWidth={2} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

@@ -44,7 +44,7 @@ export default function AdminLoginPage() {
     <main
       className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
       style={{
-        background: "linear-gradient(135deg, #143C2D 0%, #1F5A44 55%, #2A7A5A 100%)",
+        background: "linear-gradient(135deg, #123D73 0%, #1E56A0 55%, #2E6FC7 100%)",
       }}
     >
       {/* Aksen lembut, jangan sampai norak, cuma glow samar di pojok */}
