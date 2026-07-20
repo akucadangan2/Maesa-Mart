@@ -30,7 +30,19 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
-const STORAGE_KEY = "maesa_barcode_label_pref";
+const STORAGE_KEY = "maesa_barcode_label_pref_v2";
+
+type PrintMode = "single" | "grid";
+
+interface SavedPref {
+  mode: PrintMode;
+  presetKey: string;
+  customWidth: string;
+  customHeight: string;
+  gridTotalWidth: string;
+  gridColumns: string;
+  gridRowHeight: string;
+}
 
 function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
   return {
@@ -44,19 +56,27 @@ function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
   };
 }
 
-function muatPreferensiTersimpan() {
+function hitungBarcodeParams(widthMm: number, heightMm: number) {
+  return {
+    barcodeWidth: Math.max(1, Math.round((widthMm / 40) * 10) / 10),
+    barcodeHeight: Math.max(14, Math.round(heightMm * 0.55)),
+    fontSize: Math.max(6, Math.round(widthMm / 6)),
+  };
+}
+
+function muatPreferensiTersimpan(): SavedPref | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as { presetKey: string; customWidth: string; customHeight: string }) : null;
+    return raw ? (JSON.parse(raw) as SavedPref) : null;
   } catch {
     return null;
   }
 }
 
-function simpanPreferensi(presetKey: string, customWidth: string, customHeight: string) {
+function simpanPreferensi(pref: SavedPref) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ presetKey, customWidth, customHeight }));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pref));
 }
 
 export default function BarcodeClient() {
@@ -64,44 +84,69 @@ export default function BarcodeClient() {
   const [results, setResults] = useState<BarcodeSearchResult[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [presetKey, setPresetKey] = useState<string>(PRESETS[0].key);
-  const [customWidth, setCustomWidth] = useState("40");
-  const [customHeight, setCustomHeight] = useState("30");
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const svgRefs = useRef<Map<string, SVGSVGElement>>(new Map());
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchSeq = useRef(0);
 
-  // Muat preferensi ukuran label yang tersimpan dari kunjungan sebelumnya
+  const [mode, setMode] = useState<PrintMode>("single");
+  const [presetKey, setPresetKey] = useState<string>(PRESETS[0].key);
+  const [customWidth, setCustomWidth] = useState("40");
+  const [customHeight, setCustomHeight] = useState("30");
+
+  // Default diisi persis sesuai hasil cek driver Postek: 120.3mm total, 3 kolom, tinggi 22.9mm
+  const [gridTotalWidth, setGridTotalWidth] = useState("120.3");
+  const [gridColumns, setGridColumns] = useState("3");
+  const [gridRowHeight, setGridRowHeight] = useState("22.9");
+
   useEffect(() => {
     const saved = muatPreferensiTersimpan();
     if (saved) {
+      setMode(saved.mode);
       setPresetKey(saved.presetKey);
       setCustomWidth(saved.customWidth);
       setCustomHeight(saved.customHeight);
+      setGridTotalWidth(saved.gridTotalWidth);
+      setGridColumns(saved.gridColumns);
+      setGridRowHeight(saved.gridRowHeight);
     }
   }, []);
 
+  function simpanSemua(patch: Partial<SavedPref>) {
+    const pref: SavedPref = {
+      mode,
+      presetKey,
+      customWidth,
+      customHeight,
+      gridTotalWidth,
+      gridColumns,
+      gridRowHeight,
+      ...patch,
+    };
+    simpanPreferensi(pref);
+  }
+
+  function ubahMode(m: PrintMode) {
+    setMode(m);
+    simpanSemua({ mode: m });
+  }
+
   function pilihPreset(key: string) {
     setPresetKey(key);
-    simpanPreferensi(key, customWidth, customHeight);
-  }
-
-  function ubahCustomWidth(value: string) {
-    setCustomWidth(value);
-    simpanPreferensi(presetKey, value, customHeight);
-  }
-
-  function ubahCustomHeight(value: string) {
-    setCustomHeight(value);
-    simpanPreferensi(presetKey, customWidth, value);
+    simpanSemua({ presetKey: key });
   }
 
   const isCustom = presetKey === "custom";
   const preset = isCustom
     ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
     : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
+
+  const kolomCount = Math.max(1, Number(gridColumns) || 1);
+  const totalWidthNum = Number(gridTotalWidth) || 120;
+  const rowHeightNum = Number(gridRowHeight) || 22.9;
+  const colWidthNum = totalWidthNum / kolomCount;
+  const gridBarcodeParams = hitungBarcodeParams(colWidthNum, rowHeightNum);
 
   useEffect(() => {
     const seq = ++searchSeq.current;
@@ -146,7 +191,6 @@ export default function BarcodeClient() {
       tambahKeAntrian(item);
       return;
     }
-
     setGeneratingKey(item.key);
     try {
       const kode = await generateBarcodeForProduct(item.product_id);
@@ -186,24 +230,32 @@ export default function BarcodeClient() {
     }))
   );
 
+  const printRows: (typeof printItems)[] =
+    mode === "grid"
+      ? Array.from({ length: Math.ceil(printItems.length / kolomCount) }, (_, i) =>
+          printItems.slice(i * kolomCount, i * kolomCount + kolomCount)
+        )
+      : [];
+
   useEffect(() => {
     printItems.forEach((item) => {
       const el = svgRefs.current.get(item.printKey);
       if (el && item.kode_barcode) {
+        const params = mode === "grid" ? gridBarcodeParams : preset;
         try {
           JsBarcode(el, item.kode_barcode, {
             format: "CODE128",
-            width: preset.barcodeWidth,
-            height: preset.barcodeHeight,
+            width: params.barcodeWidth,
+            height: params.barcodeHeight,
             displayValue: false,
-            margin: 2,
+            margin: 1,
           });
         } catch {
           // Barcode gagal di-render (kode gak valid), biarin kosong
         }
       }
     });
-  }, [printItems.length, queue, preset]);
+  }, [printItems.length, queue, preset, mode, gridBarcodeParams]);
 
   return (
     <div>
@@ -211,57 +263,136 @@ export default function BarcodeClient() {
         <h1 className="text-xl font-bold mb-4">Cetak Barcode</h1>
 
         <div className="mb-4">
-          <label className="text-sm font-medium block mb-1.5">Ukuran Label (sesuaikan sama roll di printer)</label>
-          <div className="flex gap-2 flex-wrap mb-2">
-            {PRESETS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => pilihPreset(p.key)}
-                className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
-                  presetKey === p.key ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <label className="text-sm font-medium block mb-1.5">Mode Cetak</label>
+          <div className="flex gap-2 mb-3">
             <button
-              onClick={() => pilihPreset("custom")}
+              onClick={() => ubahMode("single")}
               className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
-                isCustom ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
+                mode === "single" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
               }`}
             >
-              Custom...
+              1 Label per Baris
+            </button>
+            <button
+              onClick={() => ubahMode("grid")}
+              className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+                mode === "grid" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
+              }`}
+            >
+              Grid Beberapa Kolom
             </button>
           </div>
 
-          {isCustom && (
-            <div className="flex items-center gap-2 bg-gray-50 border rounded-lg p-3 max-w-xs">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Lebar (mm)</label>
-                <input
-                  type="number"
-                  min={10}
-                  value={customWidth}
-                  onChange={(e) => ubahCustomWidth(e.target.value)}
-                  className="w-full border rounded px-2 py-1.5 text-sm"
-                />
+          {mode === "single" ? (
+            <>
+              <label className="text-xs text-gray-500 block mb-1.5">Ukuran Label</label>
+              <div className="flex gap-2 flex-wrap mb-2">
+                {PRESETS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => pilihPreset(p.key)}
+                    className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+                      presetKey === p.key
+                        ? "bg-brand text-white border-brand"
+                        : "border-gray-200 text-gray-600 bg-white"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => pilihPreset("custom")}
+                  className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+                    isCustom ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
+                  }`}
+                >
+                  Custom...
+                </button>
               </div>
-              <span className="text-gray-400 mt-5">x</span>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Tinggi (mm)</label>
-                <input
-                  type="number"
-                  min={10}
-                  value={customHeight}
-                  onChange={(e) => ubahCustomHeight(e.target.value)}
-                  className="w-full border rounded px-2 py-1.5 text-sm"
-                />
+              {isCustom && (
+                <div className="flex items-center gap-2 bg-gray-50 border rounded-lg p-3 max-w-xs">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Lebar (mm)</label>
+                    <input
+                      type="number"
+                      min={10}
+                      value={customWidth}
+                      onChange={(e) => {
+                        setCustomWidth(e.target.value);
+                        simpanSemua({ customWidth: e.target.value });
+                      }}
+                      className="w-full border rounded px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <span className="text-gray-400 mt-5">x</span>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Tinggi (mm)</label>
+                    <input
+                      type="number"
+                      min={10}
+                      value={customHeight}
+                      onChange={(e) => {
+                        setCustomHeight(e.target.value);
+                        simpanSemua({ customHeight: e.target.value });
+                      }}
+                      className="w-full border rounded px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="bg-gray-50 border rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-2">
+                Diisi sesuai hasil cek driver printer (PaperWidth/PaperLength). Ubah kalau perlu.
+              </p>
+              <div className="grid grid-cols-3 gap-2 max-w-md">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Lebar Total (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={gridTotalWidth}
+                    onChange={(e) => {
+                      setGridTotalWidth(e.target.value);
+                      simpanSemua({ gridTotalWidth: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Jumlah Kolom</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={gridColumns}
+                    onChange={(e) => {
+                      setGridColumns(e.target.value);
+                      simpanSemua({ gridColumns: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Tinggi Baris (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={gridRowHeight}
+                    onChange={(e) => {
+                      setGridRowHeight(e.target.value);
+                      simpanSemua({ gridRowHeight: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
               </div>
+              <p className="text-xs text-gray-400 mt-2">
+                1 kotak label ≈ {colWidthNum.toFixed(1)}mm x {rowHeightNum}mm
+              </p>
             </div>
           )}
-          <p className="text-xs text-gray-400 mt-1.5">
-            Pilihan ukuran ini otomatis keinget buat kunjungan berikutnya di komputer ini.
-          </p>
+          <p className="text-xs text-gray-400 mt-1.5">Pengaturan ini otomatis keinget di komputer ini.</p>
         </div>
 
         <div ref={searchBoxRef} className="relative mb-4">
@@ -397,59 +528,120 @@ export default function BarcodeClient() {
           </button>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          Label dicetak menyambung ke bawah sesuai lebar roll yang dipilih (kayak printer struk),
-          jumlahnya ngikutin kolom "Jumlah Label" di tabel atas.
+          {mode === "grid"
+            ? `Dicetak ${kolomCount} label sejajar per baris, lanjut baris berikutnya di bawahnya.`
+            : "Label dicetak menyambung ke bawah 1 per baris."}
         </p>
       </div>
 
       <div className="print-area">
-        {printItems.map((item) => (
-          <div
-            key={item.printKey}
-            className="label-page"
-            style={{
-              width: `${preset.widthMm}mm`,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "2mm",
-            }}
-          >
-            <div
-              style={{
-                fontSize: `${preset.fontSize + 1}px`,
-                fontWeight: 700,
-                textAlign: "center",
-                textTransform: "uppercase",
-                lineHeight: 1.2,
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                marginBottom: "1mm",
-              }}
-            >
-              {item.nama_produk}
-            </div>
-            <svg
-              ref={(el) => {
-                if (el) svgRefs.current.set(item.printKey, el);
-              }}
-            />
-            <div
-              style={{
-                fontSize: `${preset.fontSize}px`,
-                fontWeight: 600,
-                textAlign: "center",
-                marginTop: "1mm",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
-            </div>
-          </div>
-        ))}
+        {mode === "single"
+          ? printItems.map((item) => (
+              <div
+                key={item.printKey}
+                className="label-page"
+                style={{
+                  width: `${preset.widthMm}mm`,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "2mm",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: `${preset.fontSize + 1}px`,
+                    fontWeight: 700,
+                    textAlign: "center",
+                    textTransform: "uppercase",
+                    lineHeight: 1.2,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginBottom: "1mm",
+                  }}
+                >
+                  {item.nama_produk}
+                </div>
+                <svg
+                  ref={(el) => {
+                    if (el) svgRefs.current.set(item.printKey, el);
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: `${preset.fontSize}px`,
+                    fontWeight: 600,
+                    textAlign: "center",
+                    marginTop: "1mm",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
+                </div>
+              </div>
+            ))
+          : printRows.map((row, rowIndex) => (
+              <div
+                key={rowIndex}
+                className="label-row"
+                style={{
+                  width: `${totalWidthNum}mm`,
+                  height: `${rowHeightNum}mm`,
+                  display: "flex",
+                  flexDirection: "row",
+                }}
+              >
+                {row.map((item) => (
+                  <div
+                    key={item.printKey}
+                    style={{
+                      width: `${colWidthNum}mm`,
+                      height: `${rowHeightNum}mm`,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      padding: "0.5mm",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: `${gridBarcodeParams.fontSize + 1}px`,
+                        fontWeight: 700,
+                        textAlign: "center",
+                        textTransform: "uppercase",
+                        lineHeight: 1.1,
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.nama_produk}
+                    </div>
+                    <svg
+                      ref={(el) => {
+                        if (el) svgRefs.current.set(item.printKey, el);
+                      }}
+                    />
+                    <div
+                      style={{
+                        fontSize: `${gridBarcodeParams.fontSize}px`,
+                        fontWeight: 600,
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
       </div>
 
       <style jsx global>{`
@@ -458,7 +650,7 @@ export default function BarcodeClient() {
         }
         @media print {
           @page {
-            size: ${preset.widthMm}mm auto;
+            size: ${mode === "grid" ? `${totalWidthNum}mm ${rowHeightNum}mm` : `${preset.widthMm}mm auto`};
             margin: 0;
           }
           .no-print {
@@ -466,6 +658,12 @@ export default function BarcodeClient() {
           }
           .print-area {
             display: block !important;
+          }
+          .label-row {
+            page-break-after: always;
+          }
+          .label-row:last-child {
+            page-break-after: auto;
           }
         }
       `}</style>
