@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Phone, Lock, Unlock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -43,12 +43,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="max-w-sm w-full">
-        <img src="/866x288.png" alt="Maesa Mart" className="h-10 w-auto mx-auto mb-6" />
-        <div className="bg-surface border border-line rounded-2xl p-6">
-          <h1 className="font-display text-lg font-semibold mb-4">Login Pelanggan</h1>
-          <form onSubmit={handleSubmit} className="space-y-3">
+    <main className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+      <div className="max-w-sm w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="h-1.5 bg-brand" />
+
+        <div className="px-8 pt-8 pb-6 flex flex-col items-center border-b">
+          <img src="/866x288.png" alt="Maesa Mart" className="h-16 w-auto object-contain" />
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-8 py-6 space-y-4">
+          <p className="text-sm text-gray-500">Login untuk pesan & lihat riwayat belanjamu</p>
+
+          <div className="flex items-stretch border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-brand">
             <input
               type="tel"
               placeholder="No HP"
@@ -56,53 +62,71 @@ export default function LoginPage() {
               onChange={(e) => setNoHp(e.target.value)}
               required
               inputMode="numeric"
-              className="border border-line rounded-xl w-full px-3 py-2.5 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-brand"
+              className="flex-1 px-3 py-2.5 text-sm outline-none min-w-0"
             />
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Kata sandi"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="border border-line rounded-xl w-full px-3 py-2.5 pr-10 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-brand"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-soft"
-                aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+            <div className="w-11 flex items-center justify-center bg-gray-100 border-l shrink-0">
+              <Phone size={16} className="text-gray-500" />
             </div>
+          </div>
 
-            <div className="text-right">
-              <a href="/lupa-password" className="text-xs text-brand underline">
-                Lupa kata sandi?
-              </a>
-            </div>
-
-            {errorMsg && <p className="text-red-500 text-xs">{errorMsg}</p>}
+          <div className="flex items-stretch border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-brand">
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Kata sandi"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="flex-1 px-3 py-2.5 text-sm outline-none min-w-0"
+            />
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-brand text-white rounded-xl py-2.5 text-sm font-medium disabled:opacity-50"
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="w-11 flex items-center justify-center bg-gray-100 border-l shrink-0"
+              aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
             >
-              {loading ? "Masuk..." : "Masuk"}
+              {showPassword ? (
+                <Unlock size={16} className="text-gray-500" />
+              ) : (
+                <Lock size={16} className="text-gray-500" />
+              )}
             </button>
-          </form>
-          <p className="text-xs text-ink-soft text-center mt-4">
+          </div>
+
+          <div className="text-right -mt-2">
+            <a href="/lupa-password" className="text-xs text-brand underline">
+              Lupa kata sandi?
+            </a>
+          </div>
+
+          {errorMsg && (
+            <div className="bg-red-50 border border-red-100 text-red-600 text-xs rounded-lg px-3 py-2">
+              {errorMsg}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-brand text-white rounded-lg py-3 text-sm font-medium disabled:opacity-50 hover:bg-brand-dark transition-colors"
+          >
+            {loading ? "Masuk..." : "Sign In"}
+          </button>
+
+          <p className="text-xs text-gray-500 text-center pt-1">
             Belum punya akun?{" "}
             <a href="/daftar" className="text-brand underline">
               Daftar di sini
             </a>
           </p>
-        </div>
-        <a href="/order" className="block text-center text-xs text-ink-soft mt-4 underline">
-          Lanjut belanja tanpa login
-        </a>
+        </form>
       </div>
+
+      <a
+        href="/order"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 text-xs text-gray-500 underline bg-white/80 px-3 py-1.5 rounded-full"
+      >
+        Lanjut belanja tanpa login
+      </a>
     </main>
   );
 }
