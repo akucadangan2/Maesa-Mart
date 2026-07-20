@@ -15,6 +15,7 @@ import {
   X,
   Loader2,
   Phone,
+  Image as ImageIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { downloadStruk } from "@/lib/strukGenerator";
@@ -66,10 +67,27 @@ function parseRibuan(value: string) {
   return Number(value.replace(/\D/g, "")) || 0;
 }
 
+function buatNomorInvoiceDraft() {
+  const now = new Date();
+  const tgl = `${String(now.getDate()).padStart(2, "0")}${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}${String(now.getFullYear()).slice(2)}`;
+  const acak = Math.floor(1000 + Math.random() * 9000);
+  return `INV-${tgl}${acak}`;
+}
+
 export default function KasirClient({ staffId, staffNama }: { staffId: string; staffNama: string }) {
   const router = useRouter();
   const supabase = createClient();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [draftInvoiceNo] = useState(() => buatNomorInvoiceDraft());
+  const todayFormatted = new Date().toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<KasirSearchResult[]>([]);
@@ -342,10 +360,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   return (
     <main className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-20 bg-white border-b px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <div className="font-semibold text-sm">Kasir POS</div>
-          <div className="text-xs text-gray-500">{staffNama}</div>
-        </div>
+        <div className="font-semibold text-sm">Kasir POS</div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => bukaOnline()}
@@ -384,7 +399,34 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto p-4">
+      <div className="max-w-3xl mx-auto p-4">
+        {/* Bar invoice + total besar, persis kayak referensi */}
+        <div className="flex flex-col md:flex-row gap-3 mb-4">
+          <div className="flex-1 bg-white border rounded-xl p-4 grid grid-cols-3 gap-3">
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">No. Invoice</div>
+              <div className="font-mono text-sm font-medium truncate">{draftInvoiceNo}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Tanggal</div>
+              <div className="text-sm font-medium">{todayFormatted}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Kasir</div>
+              <div className="inline-block bg-brand text-white text-xs font-medium px-2 py-1 rounded truncate max-w-full">
+                {staffNama}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-brand rounded-xl p-4 flex flex-col justify-center md:w-72 shrink-0">
+            <div className="text-xs text-white/80 mb-0.5">TOTAL HARGA</div>
+            <div className="text-4xl font-bold font-mono text-white leading-tight">
+              Rp{subtotal.toLocaleString("id-ID")}
+            </div>
+          </div>
+        </div>
+
         <div className="relative mb-4">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -420,94 +462,129 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           )}
         </div>
 
+        {/* Tabel keranjang, kayak referensi */}
         <div className="bg-white rounded-xl border overflow-hidden mb-4">
           {cart.length === 0 ? (
-            <p className="text-sm text-gray-400 italic text-center py-8">
+            <p className="text-sm text-gray-400 italic text-center py-10">
               Keranjang kosong, scan atau cari produk di atas.
             </p>
           ) : (
-            <div className="divide-y">
-              {cart.map((line, i) => {
-                const unit = selectedUnit(line);
-                const stokDalamSatuanIni = Math.floor(line.stok_tersedia_eceran / unit.konversi);
-                const kurangStok = line.qty > stokDalamSatuanIni;
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-brand text-white">
+                  <tr>
+                    <th className="p-2.5 text-xs font-medium text-left w-8">No</th>
+                    <th className="p-2.5 text-xs font-medium text-left w-12">Foto</th>
+                    <th className="p-2.5 text-xs font-medium text-left">Nama Produk</th>
+                    <th className="p-2.5 text-xs font-medium text-left w-24">Satuan</th>
+                    <th className="p-2.5 text-xs font-medium text-right w-24">Harga</th>
+                    <th className="p-2.5 text-xs font-medium text-center w-28">Jumlah</th>
+                    <th className="p-2.5 text-xs font-medium text-right w-24">Total</th>
+                    <th className="p-2.5 text-xs font-medium text-center w-12">Hapus</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cart.map((line, i) => {
+                    const unit = selectedUnit(line);
+                    const stokDalamSatuanIni = Math.floor(line.stok_tersedia_eceran / unit.konversi);
+                    const kurangStok = line.qty > stokDalamSatuanIni;
 
-                return (
-                  <div key={`${line.product_id}-${line.selectedUnitKey}`} className="flex items-center gap-2 p-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{line.nama_produk}</div>
-                      <div className="text-xs text-gray-500">Rp{unit.harga_jual.toLocaleString("id-ID")}</div>
-                      {kurangStok && (
-                        <div className="text-xs text-orange-600 mt-0.5">
-                          Stok cuma {stokDalamSatuanIni} {unit.satuan}, tetap bisa lanjut
-                        </div>
-                      )}
-                    </div>
-
-                    {line.units.length > 1 && (
-                      <select
-                        value={line.selectedUnitKey}
-                        onChange={(e) => ubahSatuan(i, e.target.value)}
-                        className="border rounded-lg text-xs px-1.5 py-1.5"
-                      >
-                        {line.units.map((u) => (
-                          <option key={unitKeyOf(u)} value={unitKeyOf(u)}>
-                            {u.satuan}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => ubahQty(i, line.qty - 1)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full border"
-                      >
-                        <Minus size={13} />
-                      </button>
-                      <span className="w-6 text-center text-sm font-mono">{line.qty}</span>
-                      <button
-                        onClick={() => ubahQty(i, line.qty + 1)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full border"
-                      >
-                        <Plus size={13} />
-                      </button>
-                    </div>
-                    <span className="w-20 text-right text-sm font-mono">
-                      Rp{(unit.harga_jual * line.qty).toLocaleString("id-ID")}
-                    </span>
-                    <button onClick={() => hapusItem(i)} className="text-gray-400 hover:text-red-500">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                );
-              })}
+                    return (
+                      <tr key={`${line.product_id}-${line.selectedUnitKey}`} className="border-t">
+                        <td className="p-2.5 text-xs text-gray-500">{i + 1}</td>
+                        <td className="p-2.5">
+                          {line.foto_url ? (
+                            <img
+                              src={line.foto_url}
+                              alt={line.nama_produk}
+                              className="w-8 h-8 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
+                              <ImageIcon size={12} className="text-gray-300" />
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-2.5">
+                          <div className="font-medium">{line.nama_produk}</div>
+                          {kurangStok && (
+                            <div className="text-xs text-orange-600">
+                              Stok cuma {stokDalamSatuanIni} {unit.satuan}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-2.5">
+                          {line.units.length > 1 ? (
+                            <select
+                              value={line.selectedUnitKey}
+                              onChange={(e) => ubahSatuan(i, e.target.value)}
+                              className="border rounded text-xs px-1.5 py-1 w-full"
+                            >
+                              {line.units.map((u) => (
+                                <option key={unitKeyOf(u)} value={unitKeyOf(u)}>
+                                  {u.satuan}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-gray-500">{unit.satuan}</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-right font-mono text-xs">
+                          {unit.harga_jual.toLocaleString("id-ID")}
+                        </td>
+                        <td className="p-2.5">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => ubahQty(i, line.qty - 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded border text-gray-500"
+                            >
+                              <Minus size={11} />
+                            </button>
+                            <span className="w-6 text-center text-sm font-mono">{line.qty}</span>
+                            <button
+                              onClick={() => ubahQty(i, line.qty + 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded border text-gray-500"
+                            >
+                              <Plus size={11} />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-right font-mono text-xs font-semibold">
+                          {(unit.harga_jual * line.qty).toLocaleString("id-ID")}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <button
+                            onClick={() => hapusItem(i)}
+                            className="w-7 h-7 inline-flex items-center justify-center rounded-full text-red-500 hover:bg-red-50"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
 
         {cart.length > 0 && (
-          <div className="bg-white rounded-xl border p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Total</span>
-              <span className="font-mono text-2xl font-bold">Rp{subtotal.toLocaleString("id-ID")}</span>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleTahan}
-                className="flex-1 flex items-center justify-center gap-1.5 border rounded-xl py-2.5 text-sm font-medium text-gray-600"
-              >
-                <Pause size={14} />
-                Tahan Transaksi
-              </button>
-              <button
-                onClick={() => setCheckoutOpen(true)}
-                className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-semibold"
-              >
-                Selesaikan Transaksi
-              </button>
-            </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleTahan}
+              className="flex-1 flex items-center justify-center gap-1.5 border rounded-xl py-2.5 text-sm font-medium text-gray-600 bg-white"
+            >
+              <Pause size={14} />
+              Tahan Transaksi
+            </button>
+            <button
+              onClick={() => setCheckoutOpen(true)}
+              className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-semibold"
+            >
+              Selesaikan Transaksi
+            </button>
           </div>
         )}
       </div>
