@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import { Search, Printer, Trash2, X, Check } from "lucide-react";
-import { searchBarcodeItems, type BarcodeSearchResult } from "./actions";
+import {
+  searchBarcodeItems,
+  generateBarcodeForProduct,
+  type BarcodeSearchResult,
+} from "./actions";
 
 interface QueueItem extends BarcodeSearchResult {
   jumlah: number;
@@ -46,6 +50,7 @@ export default function BarcodeClient() {
   const [presetKey, setPresetKey] = useState<string>(PRESETS[0].key);
   const [customWidth, setCustomWidth] = useState("40");
   const [customHeight, setCustomHeight] = useState("30");
+  const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const svgRefs = useRef<Map<string, SVGSVGElement>>(new Map());
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +61,6 @@ export default function BarcodeClient() {
     ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
     : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
 
-  // Cari produk, tahan hasil telat biar gak nimpa hasil yang lebih baru
   useEffect(() => {
     const seq = ++searchSeq.current;
     const t = setTimeout(async () => {
@@ -73,8 +77,6 @@ export default function BarcodeClient() {
     return () => clearTimeout(t);
   }, [query]);
 
-  // Dropdown cuma nutup kalau klik di luar area search, BUKAN otomatis
-  // setelah pilih 1 item, biar bisa lanjut pilih item lain dari hasil yang sama.
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
@@ -86,6 +88,7 @@ export default function BarcodeClient() {
   }, []);
 
   function tambahKeAntrian(item: BarcodeSearchResult) {
+    if (!item.kode_barcode) return;
     setQueue((prev) => {
       const existing = prev.find((q) => q.key === item.key);
       if (existing) {
@@ -93,9 +96,26 @@ export default function BarcodeClient() {
       }
       return [...prev, { ...item, jumlah: 1 }];
     });
-    // Sengaja TIDAK di-reset query/results, biar dropdown tetap kebuka
-    // dan bisa langsung klik produk lain dari hasil pencarian yang sama.
     inputRef.current?.focus();
+  }
+
+  async function handleRowClick(item: BarcodeSearchResult) {
+    if (item.kode_barcode) {
+      tambahKeAntrian(item);
+      return;
+    }
+
+    setGeneratingKey(item.key);
+    try {
+      const kode = await generateBarcodeForProduct(item.product_id);
+      const updatedItem: BarcodeSearchResult = { ...item, kode_barcode: kode };
+      setResults((prev) => prev.map((r) => (r.key === item.key ? updatedItem : r)));
+      tambahKeAntrian(updatedItem);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal bikin barcode");
+    } finally {
+      setGeneratingKey(null);
+    }
   }
 
   function bersihkanPencarian() {
@@ -127,7 +147,7 @@ export default function BarcodeClient() {
   useEffect(() => {
     printItems.forEach((item) => {
       const el = svgRefs.current.get(item.printKey);
-      if (el) {
+      if (el && item.kode_barcode) {
         try {
           JsBarcode(el, item.kode_barcode, {
             format: "CODE128",
@@ -211,7 +231,7 @@ export default function BarcodeClient() {
             onFocus={() => {
               if (results.length > 0) setDropdownOpen(true);
             }}
-            placeholder="Cari nama produk atau scan/ketik barcode..."
+            placeholder="Cari nama produk (yang belum ada barcode juga muncul)..."
             className="w-full pl-9 pr-9 py-2.5 rounded-lg border border-gray-200 text-sm bg-white"
           />
           {query && (
@@ -228,24 +248,32 @@ export default function BarcodeClient() {
           {dropdownOpen && results.length > 0 && (
             <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto">
               <div className="px-3 py-1.5 text-[11px] text-gray-400 border-b bg-gray-50">
-                Klik produk buat nambah, dropdown tetap kebuka biar bisa nambah beberapa sekaligus
+                Klik buat nambah. Produk yang belum ada barcode bisa langsung dibikinin di sini.
               </div>
               {results.map((r) => {
+                const belumAdaBarcode = !r.kode_barcode;
                 const sudahAda = jumlahDiAntrian(r.key);
+                const sedangGenerate = generatingKey === r.key;
+
                 return (
                   <button
                     key={r.key}
                     type="button"
-                    onClick={() => tambahKeAntrian(r)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0"
+                    onClick={() => handleRowClick(r)}
+                    disabled={sedangGenerate}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0 disabled:opacity-60"
                   >
                     <div>
                       <div className="font-medium">{r.nama_produk}</div>
                       <div className="text-xs text-gray-500 font-mono">
-                        {r.kode_barcode} · {r.satuan}
+                        {r.kode_barcode ?? "Belum ada kode"} · {r.satuan}
                       </div>
                     </div>
-                    {sudahAda > 0 ? (
+                    {belumAdaBarcode ? (
+                      <span className="text-xs bg-orange-100 text-orange-700 rounded-full px-2 py-1 shrink-0 ml-2">
+                        {sedangGenerate ? "Membuat..." : "Belum ada barcode, klik buat"}
+                      </span>
+                    ) : sudahAda > 0 ? (
                       <span className="flex items-center gap-1 text-xs text-brand font-medium shrink-0 ml-2">
                         <Check size={13} />
                         {sudahAda}x, tambah lagi?
