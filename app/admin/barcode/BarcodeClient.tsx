@@ -99,7 +99,7 @@ export default function BarcodeClient() {
             format: "CODE128",
             width: preset.barcodeWidth,
             height: preset.barcodeHeight,
-            fontSize: preset.fontSize,
+            displayValue: false,
             margin: 2,
           });
         } catch {
@@ -258,8 +258,8 @@ export default function BarcodeClient() {
           </button>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          Tiap label dicetak 1 per halaman sesuai ukuran roll yang dipilih, jadi hasilnya rapi
-          nempel pas di label fisiknya (gak numpuk kayak dipaksa banyak kolom dalam 1 lembar).
+          Label dicetak menyambung ke bawah sesuai lebar roll yang dipilih (kayak printer struk),
+          jumlahnya ngikutin kolom "Jumlah Label" di tabel atas.
         </p>
       </div>
 
@@ -270,7 +270,6 @@ export default function BarcodeClient() {
             className="label-page"
             style={{
               width: `${preset.widthMm}mm`,
-              height: `${preset.heightMm}mm`,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -278,6 +277,22 @@ export default function BarcodeClient() {
               padding: "2mm",
             }}
           >
+            <div
+              style={{
+                fontSize: `${preset.fontSize + 1}px`,
+                fontWeight: 700,
+                textAlign: "center",
+                textTransform: "uppercase",
+                lineHeight: 1.2,
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                marginBottom: "1mm",
+              }}
+            >
+              {item.nama_produk}
+            </div>
             <svg
               ref={(el) => {
                 if (el) svgRefs.current.set(item.printKey, el);
@@ -286,18 +301,13 @@ export default function BarcodeClient() {
             <div
               style={{
                 fontSize: `${preset.fontSize}px`,
+                fontWeight: 600,
                 textAlign: "center",
-                lineHeight: 1.2,
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                marginTop: "1mm",
                 whiteSpace: "nowrap",
               }}
             >
-              {item.nama_produk}
-            </div>
-            <div style={{ fontSize: `${preset.fontSize + 2}px`, fontWeight: 700 }}>
-              Rp{item.harga.toLocaleString("id-ID")}
+              {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
             </div>
           </div>
         ))}
@@ -309,7 +319,7 @@ export default function BarcodeClient() {
         }
         @media print {
           @page {
-            size: ${preset.widthMm}mm ${preset.heightMm}mm;
+            size: ${preset.widthMm}mm auto;
             margin: 0;
           }
           .no-print {
@@ -317,12 +327,6 @@ export default function BarcodeClient() {
           }
           .print-area {
             display: block !important;
-          }
-          .label-page {
-            page-break-after: always;
-          }
-          .label-page:last-child {
-            page-break-after: auto;
           }
         }
       `}</style>
