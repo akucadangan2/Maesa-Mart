@@ -13,14 +13,25 @@ import {
   Search,
   Receipt,
   User,
+  MapPin,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { simpanNoHpTamu } from "@/lib/guestHistory";
-import type { BankAccount, Category, Product } from "@/lib/types";
+import type { BankAccount, Category, Product, ProductUnit } from "@/lib/types";
 
 interface CartItem {
   product: Product;
   qty: number;
+  unitId: string | null;
+}
+
+interface UnitOption {
+  id: string | null;
+  satuan: string;
+  hargaJual: number;
+  hargaModalPerEceran: number;
+  konversi: number;
+  adaDiskonEceran: boolean;
 }
 
 function hargaEfektif(p: Product) {
@@ -29,11 +40,34 @@ function hargaEfektif(p: Product) {
     : p.harga_jual;
 }
 
+function getUnitOptions(product: Product, unitsMap: Record<string, ProductUnit[]>): UnitOption[] {
+  const base: UnitOption = {
+    id: null,
+    satuan: product.satuan,
+    hargaJual: hargaEfektif(product),
+    hargaModalPerEceran: product.harga_modal,
+    konversi: 1,
+    adaDiskonEceran: product.diskon_persen > 0,
+  };
+  const alts: UnitOption[] = (unitsMap[product.id] ?? []).map((u) => ({
+    id: u.id,
+    satuan: u.satuan,
+    hargaJual: u.harga_jual as number,
+    hargaModalPerEceran: u.harga_beli / u.konversi,
+    konversi: u.konversi,
+    adaDiskonEceran: false,
+  }));
+  return [base, ...alts];
+}
+
+type LokasiStatus = "idle" | "loading" | "got" | "error";
+
 export default function OrderPage() {
   const supabase = createClient();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productUnitsMap, setProductUnitsMap] = useState<Record<string, ProductUnit[]>>({});
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,9 +81,13 @@ export default function OrderPage() {
   const [selectedBankId, setSelectedBankId] = useState("");
   const [buktiFile, setBuktiFile] = useState<File | null>(null);
 
-  // customerId cuma keisi kalau ada sesi login DAN sesi itu punya baris di
-  // tabel customers. Ini penting karena admin juga pakai Supabase Auth yang
-  // sama, tapi admin bukan customer, jadi gak boleh dipaksa jadi customer_id.
+  const [metodeAmbil, setMetodeAmbil] = useState<"ambil_sendiri" | "diantar">("ambil_sendiri");
+  const [lokasiLat, setLokasiLat] = useState<number | null>(null);
+  const [lokasiLng, setLokasiLng] = useState<number | null>(null);
+  const [lokasiStatus, setLokasiStatus] = useState<LokasiStatus>("idle");
+  const [lokasiErrorMsg, setLokasiErrorMsg] = useState<string | null>(null);
+  const [alamatPengantaran, setAlamatPengantaran] = useState("");
+
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [guestNama, setGuestNama] = useState("");
   const [guestNoHp, setGuestNoHp] = useState("");
@@ -60,16 +98,25 @@ export default function OrderPage() {
 
   useEffect(() => {
     async function loadData() {
-      const [{ data: cats }, { data: prods }, { data: banks }, { data: userData }] =
+      const [{ data: cats }, { data: prods }, { data: units }, { data: banks }, { data: userData }] =
         await Promise.all([
           supabase.from("categories").select("*").order("urutan"),
           supabase.from("products").select("*").eq("is_aktif", true),
+          supabase.from("product_units").select("*").not("harga_jual", "is", null),
           supabase.from("bank_accounts").select("*").eq("is_aktif", true),
           supabase.auth.getUser(),
         ]);
 
       setCategories(cats ?? []);
       setProducts(prods ?? []);
+
+      const unitsMap: Record<string, ProductUnit[]> = {};
+      for (const u of units ?? []) {
+        if (!unitsMap[u.product_id]) unitsMap[u.product_id] = [];
+        unitsMap[u.product_id].push(u);
+      }
+      setProductUnitsMap(unitsMap);
+
       setBankAccounts(banks ?? []);
       setActiveCategory(cats?.[0]?.id ?? null);
 
@@ -91,30 +138,41 @@ export default function OrderPage() {
 
   const isLoggedIn = !!customerId;
 
-  function tambahKeKeranjang(product: Product, qty: number) {
+  function unitOptionForCartItem(item: CartItem): UnitOption {
+    const options = getUnitOptions(item.product, productUnitsMap);
+    return options.find((o) => o.id === item.unitId) ?? options[0];
+  }
+
+  function tambahKeKeranjang(product: Product, qty: number, unitId: string | null) {
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
+      const existing = prev.find(
+        (item) => item.product.id === product.id && item.unitId === unitId
+      );
       if (existing) {
         return prev.map((item) =>
-          item.product.id === product.id ? { ...item, qty: item.qty + qty } : item
+          item.product.id === product.id && item.unitId === unitId
+            ? { ...item, qty: item.qty + qty }
+            : item
         );
       }
-      return [...prev, { product, qty }];
+      return [...prev, { product, qty, unitId }];
     });
   }
 
-  function ubahQty(productId: string, qty: number) {
+  function ubahQty(productId: string, unitId: string | null, qty: number) {
     if (qty <= 0) {
-      setCart((prev) => prev.filter((item) => item.product.id !== productId));
+      setCart((prev) => prev.filter((item) => !(item.product.id === productId && item.unitId === unitId)));
       return;
     }
     setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, qty } : item))
+      prev.map((item) =>
+        item.product.id === productId && item.unitId === unitId ? { ...item, qty } : item
+      )
     );
   }
 
-  function hapusItem(productId: string) {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  function hapusItem(productId: string, unitId: string | null) {
+    setCart((prev) => prev.filter((item) => !(item.product.id === productId && item.unitId === unitId)));
   }
 
   function pilihKategori(categoryId: string) {
@@ -122,8 +180,35 @@ export default function OrderPage() {
     setSearchQuery("");
   }
 
-  const totalJual = cart.reduce((sum, item) => sum + hargaEfektif(item.product) * item.qty, 0);
-  const totalModal = cart.reduce((sum, item) => sum + item.product.harga_modal * item.qty, 0);
+  function ambilLokasiSaya() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLokasiStatus("error");
+      setLokasiErrorMsg("Browser ini gak mendukung ambil lokasi otomatis, isi alamat manual aja di bawah.");
+      return;
+    }
+    setLokasiStatus("loading");
+    setLokasiErrorMsg(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLokasiLat(pos.coords.latitude);
+        setLokasiLng(pos.coords.longitude);
+        setLokasiStatus("got");
+      },
+      (err) => {
+        setLokasiStatus("error");
+        setLokasiErrorMsg(
+          "Gagal ambil lokasi (" + err.message + "). Tetap bisa lanjut, isi alamat manual di bawah."
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  const totalJual = cart.reduce((sum, item) => sum + unitOptionForCartItem(item).hargaJual * item.qty, 0);
+  const totalModal = cart.reduce((sum, item) => {
+    const unit = unitOptionForCartItem(item);
+    return sum + unit.hargaModalPerEceran * unit.konversi * item.qty;
+  }, 0);
   const totalItemDiKeranjang = cart.reduce((sum, item) => sum + item.qty, 0);
 
   async function uploadBuktiTransfer(): Promise<string | null> {
@@ -158,6 +243,10 @@ export default function OrderPage() {
       setErrorMsg("Upload bukti transfer dulu.");
       return;
     }
+    if (metodeAmbil === "diantar" && !alamatPengantaran.trim()) {
+      setErrorMsg("Isi alamat lengkap dulu buat pengantaran.");
+      return;
+    }
 
     setSubmitting(true);
 
@@ -184,21 +273,29 @@ export default function OrderPage() {
         catatan: catatan || null,
         total_modal: totalModal,
         total_jual: totalJual,
+        metode_ambil: metodeAmbil,
+        lokasi_lat: metodeAmbil === "diantar" ? lokasiLat : null,
+        lokasi_lng: metodeAmbil === "diantar" ? lokasiLng : null,
+        alamat_pengantaran: metodeAmbil === "diantar" ? alamatPengantaran.trim() : null,
       });
 
       if (orderError) {
         throw new Error("Gagal membuat pesanan: " + orderError.message);
       }
 
-      const orderItemsPayload = cart.map((item) => ({
-        order_id: orderId,
-        product_id: item.product.id,
-        nama_produk_snapshot: item.product.nama,
-        qty: item.qty,
-        harga_modal_saat_itu: item.product.harga_modal,
-        harga_jual_saat_itu: hargaEfektif(item.product),
-        subtotal: hargaEfektif(item.product) * item.qty,
-      }));
+      const orderItemsPayload = cart.map((item) => {
+        const unit = unitOptionForCartItem(item);
+        return {
+          order_id: orderId,
+          product_id: item.product.id,
+          product_unit_id: item.unitId,
+          nama_produk_snapshot: item.product.nama,
+          qty: item.qty,
+          harga_modal_saat_itu: unit.hargaModalPerEceran,
+          harga_jual_saat_itu: unit.hargaJual,
+          subtotal: unit.hargaJual * item.qty,
+        };
+      });
 
       const { error: itemsError } = await supabase.from("order_items").insert(orderItemsPayload);
       if (itemsError) throw new Error("Gagal menyimpan detail pesanan: " + itemsError.message);
@@ -207,13 +304,19 @@ export default function OrderPage() {
       if (!customerId) {
         simpanNoHpTamu(guestNoHp);
       }
-      
+
       setCart([]);
       setCatatan("");
       setGuestNama("");
       setGuestNoHp("");
       setSelectedBankId("");
       setBuktiFile(null);
+      setMetodeAmbil("ambil_sendiri");
+      setLokasiLat(null);
+      setLokasiLng(null);
+      setLokasiStatus("idle");
+      setLokasiErrorMsg(null);
+      setAlamatPengantaran("");
       setCartOpen(false);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Terjadi kesalahan");
@@ -328,7 +431,12 @@ export default function OrderPage() {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {displayedProducts.map((p) => (
-            <ProductCard key={p.id} product={p} onTambah={tambahKeKeranjang} />
+            <ProductCard
+              key={p.id}
+              product={p}
+              units={productUnitsMap[p.id] ?? []}
+              onTambah={tambahKeKeranjang}
+            />
           ))}
           {displayedProducts.length === 0 && (
             <p className="col-span-full text-center text-sm text-ink-soft py-10">
@@ -373,7 +481,7 @@ export default function OrderPage() {
               Nomor pesanan{" "}
               <span className="font-mono text-ink font-medium">{successOrder}</span>
             </div>
-            
+
             <div className="flex gap-3">
               <a
                 href="/riwayat"
@@ -388,7 +496,6 @@ export default function OrderPage() {
                 Tutup
               </button>
             </div>
-
           </div>
         </div>
       )}
@@ -422,38 +529,42 @@ export default function OrderPage() {
               <p className="text-sm text-ink-soft py-6 text-center">Keranjang masih kosong.</p>
             ) : (
               <div className="space-y-3 mb-4">
-                {cart.map((item) => (
-                  <div key={item.product.id} className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{item.product.nama}</div>
-                      <div className="text-xs font-mono text-ink-soft">
-                        Rp{(hargaEfektif(item.product) * item.qty).toLocaleString("id-ID")}
+                {cart.map((item) => {
+                  const unit = unitOptionForCartItem(item);
+                  return (
+                    <div key={`${item.product.id}-${item.unitId ?? "base"}`} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{item.product.nama}</div>
+                        <div className="text-xs text-ink-soft">{unit.satuan}</div>
+                        <div className="text-xs font-mono text-ink-soft">
+                          Rp{(unit.hargaJual * item.qty).toLocaleString("id-ID")}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => ubahQty(item.product.id, item.unitId, item.qty - 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-full border border-line"
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <span className="w-6 text-center text-sm font-mono">{item.qty}</span>
+                        <button
+                          onClick={() => ubahQty(item.product.id, item.unitId, item.qty + 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-full border border-line"
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </div>
                       <button
-                        onClick={() => ubahQty(item.product.id, item.qty - 1)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full border border-line"
+                        onClick={() => hapusItem(item.product.id, item.unitId)}
+                        className="w-7 h-7 flex items-center justify-center text-ink-soft hover:text-red-500"
+                        aria-label="Hapus item"
                       >
-                        <Minus size={13} />
-                      </button>
-                      <span className="w-6 text-center text-sm font-mono">{item.qty}</span>
-                      <button
-                        onClick={() => ubahQty(item.product.id, item.qty + 1)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full border border-line"
-                      >
-                        <Plus size={13} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
-                    <button
-                      onClick={() => hapusItem(item.product.id)}
-                      className="w-7 h-7 flex items-center justify-center text-ink-soft hover:text-red-500"
-                      aria-label="Hapus item"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -467,6 +578,73 @@ export default function OrderPage() {
                     placeholder="Contoh: dibungkus terpisah"
                     className="border border-line rounded-xl w-full px-3 py-2.5 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-brand"
                   />
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-sm font-medium block mb-1.5">Cara Ambil Pesanan</label>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setMetodeAmbil("ambil_sendiri")}
+                      className={`rounded-xl py-2.5 text-sm font-medium border ${
+                        metodeAmbil === "ambil_sendiri"
+                          ? "bg-brand text-white border-brand"
+                          : "border-line text-ink-soft"
+                      }`}
+                    >
+                      Ambil di Toko
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMetodeAmbil("diantar")}
+                      className={`rounded-xl py-2.5 text-sm font-medium border ${
+                        metodeAmbil === "diantar"
+                          ? "bg-brand text-white border-brand"
+                          : "border-line text-ink-soft"
+                      }`}
+                    >
+                      Minta Diantar
+                    </button>
+                  </div>
+
+                  {metodeAmbil === "diantar" && (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={ambilLokasiSaya}
+                        className="w-full flex items-center justify-center gap-2 border border-line rounded-xl py-2.5 text-sm text-ink"
+                      >
+                        <MapPin size={15} />
+                        {lokasiStatus === "loading"
+                          ? "Mengambil lokasi..."
+                          : lokasiStatus === "got"
+                          ? "Lokasi didapat, ambil ulang?"
+                          : "Ambil Lokasi Saya"}
+                      </button>
+
+                      {lokasiStatus === "got" && lokasiLat !== null && lokasiLng !== null && (
+                        <a
+                          href={`https://www.google.com/maps?q=${lokasiLat},${lokasiLng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-brand underline block text-center"
+                        >
+                          Lihat titik lokasi di Google Maps
+                        </a>
+                      )}
+
+                      {lokasiErrorMsg && (
+                        <p className="text-xs text-orange-600">{lokasiErrorMsg}</p>
+                      )}
+
+                      <input
+                        value={alamatPengantaran}
+                        onChange={(e) => setAlamatPengantaran(e.target.value)}
+                        placeholder="Alamat lengkap (nama jalan, no rumah, patokan)"
+                        className="border border-line rounded-xl w-full px-3 py-2.5 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-brand"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="mb-4">
@@ -581,13 +759,19 @@ export default function OrderPage() {
 
 function ProductCard({
   product,
+  units,
   onTambah,
 }: {
   product: Product;
-  onTambah: (product: Product, qty: number) => void;
+  units: ProductUnit[];
+  onTambah: (product: Product, qty: number, unitId: string | null) => void;
 }) {
   const [qty, setQty] = useState(1);
-  const adaDiskon = product.diskon_persen > 0;
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+
+  const options = getUnitOptions(product, { [product.id]: units });
+  const selected = options.find((o) => o.id === selectedUnitId) ?? options[0];
+  const adaDiskonBadge = product.diskon_persen > 0;
 
   return (
     <div className="rounded-2xl bg-surface border border-line overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-shadow">
@@ -599,7 +783,7 @@ function ProductCard({
             <ImageIcon size={28} className="text-ink-soft/50" />
           </div>
         )}
-        {adaDiskon && (
+        {adaDiskonBadge && (
           <div className="absolute top-2 -right-9 w-32 rotate-45 bg-accent py-1 text-center shadow-sm">
             <span className="font-mono text-[10px] font-semibold text-accent-ink">
               -{product.diskon_persen}%
@@ -609,23 +793,38 @@ function ProductCard({
       </div>
 
       <div className="px-3 pt-3 pb-3 flex flex-col flex-1">
-        <div className="text-sm font-medium text-ink leading-snug line-clamp-2">
+        <div className="text-sm font-medium text-ink leading-snug line-clamp-2 mb-1">
           {product.nama}
         </div>
-        <div className="text-xs text-ink-soft mb-2">{product.satuan}</div>
 
-        {adaDiskon ? (
+        {options.length > 1 ? (
+          <select
+            value={selectedUnitId ?? "base"}
+            onChange={(e) => setSelectedUnitId(e.target.value === "base" ? null : e.target.value)}
+            className="text-xs border border-line rounded-lg px-2 py-1 mb-2 bg-bg"
+          >
+            {options.map((o) => (
+              <option key={o.id ?? "base"} value={o.id ?? "base"}>
+                {o.satuan}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="text-xs text-ink-soft mb-2">{product.satuan}</div>
+        )}
+
+        {selected.id === null && selected.adaDiskonEceran ? (
           <div className="mb-3 flex items-baseline gap-2 flex-wrap">
             <span className="font-mono text-xs text-ink-soft line-through">
               Rp{product.harga_jual.toLocaleString("id-ID")}
             </span>
             <span className="font-mono text-sm font-semibold text-brand">
-              Rp{hargaEfektif(product).toLocaleString("id-ID")}
+              Rp{selected.hargaJual.toLocaleString("id-ID")}
             </span>
           </div>
         ) : (
           <div className="font-mono text-sm font-semibold text-brand mb-3">
-            Rp{product.harga_jual.toLocaleString("id-ID")}
+            Rp{selected.hargaJual.toLocaleString("id-ID")}
           </div>
         )}
 
@@ -646,7 +845,7 @@ function ProductCard({
             </button>
           </div>
           <button
-            onClick={() => onTambah(product, qty)}
+            onClick={() => onTambah(product, qty, selectedUnitId)}
             className="w-full flex items-center justify-center gap-1.5 bg-brand text-white rounded-lg py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             <ShoppingBasket size={13} />

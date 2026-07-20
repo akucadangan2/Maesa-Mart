@@ -25,6 +25,10 @@ interface OrderDetail extends OrderListRow {
   bukti_bayar_url: string | null;
   order_items: { id: string; nama_produk_snapshot: string; qty: number; subtotal: number }[];
   bank_accounts: { nama_bank: string; no_rekening: string; atas_nama: string } | null;
+  metode_ambil: "ambil_sendiri" | "diantar";
+  lokasi_lat: number | null;
+  lokasi_lng: number | null;
+  alamat_pengantaran: string | null;
 }
 
 const labelPesanan: Record<string, string> = {
@@ -260,6 +264,23 @@ export default function TransaksiClient({
                         <div className="text-sm">
                           <span className="text-gray-500">Catatan: </span>
                           {detail.catatan}
+                        </div>
+                      )}
+
+                      {detail.metode_ambil === "diantar" && (
+                        <div className="text-sm bg-orange-50 border border-orange-100 rounded-lg p-3">
+                          <div className="font-medium text-orange-700 mb-1">🛵 Minta Diantar</div>
+                          {detail.alamat_pengantaran && <div>{detail.alamat_pengantaran}</div>}
+                          {detail.lokasi_lat && detail.lokasi_lng && (
+                            <a
+                              href={`https://www.google.com/maps?q=${detail.lokasi_lat},${detail.lokasi_lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand underline text-xs block mt-1"
+                            >
+                              Buka lokasi di Google Maps
+                            </a>
+                          )}
                         </div>
                       )}
 

@@ -971,6 +971,24 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                                     {detail.catatan}
                                   </div>
                                 )}
+                                {(detail as any).metode_ambil === "diantar" && (
+                                  <div className="text-xs bg-orange-50 border border-orange-100 rounded p-2">
+                                    <div className="font-medium text-orange-700">🛵 Minta Diantar</div>
+                                    {(detail as any).alamat_pengantaran && (
+                                      <div>{(detail as any).alamat_pengantaran}</div>
+                                    )}
+                                    {(detail as any).lokasi_lat && (detail as any).lokasi_lng && (
+                                      <a
+                                        href={`https://www.google.com/maps?q=${(detail as any).lokasi_lat},${(detail as any).lokasi_lng}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-brand underline block mt-1"
+                                      >
+                                        Buka lokasi di Google Maps
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
                                 {((detail.customers as any)?.no_hp || detail.guest_no_hp) && (
                                   <div className="flex items-center gap-1.5 text-xs text-gray-600 pt-1 border-t">
                                     <Phone size={12} />
