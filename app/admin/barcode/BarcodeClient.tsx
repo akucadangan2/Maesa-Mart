@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
-import { Search, Printer, Trash2 } from "lucide-react";
+import { Search, Printer, Trash2, X, Check } from "lucide-react";
 import { searchBarcodeItems, type BarcodeSearchResult } from "./actions";
 
 interface QueueItem extends BarcodeSearchResult {
@@ -41,27 +41,49 @@ function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
 export default function BarcodeClient() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<BarcodeSearchResult[]>([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [presetKey, setPresetKey] = useState<string>(PRESETS[0].key);
   const [customWidth, setCustomWidth] = useState("40");
   const [customHeight, setCustomHeight] = useState("30");
   const svgRefs = useRef<Map<string, SVGSVGElement>>(new Map());
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searchSeq = useRef(0);
 
   const isCustom = presetKey === "custom";
   const preset = isCustom
     ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
     : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
 
+  // Cari produk, tahan hasil telat biar gak nimpa hasil yang lebih baru
   useEffect(() => {
+    const seq = ++searchSeq.current;
     const t = setTimeout(async () => {
-      if (query.trim()) {
-        setResults(await searchBarcodeItems(query));
-      } else {
+      if (!query.trim()) {
         setResults([]);
+        return;
+      }
+      const data = await searchBarcodeItems(query);
+      if (seq === searchSeq.current) {
+        setResults(data);
+        setDropdownOpen(true);
       }
     }, 300);
     return () => clearTimeout(t);
   }, [query]);
+
+  // Dropdown cuma nutup kalau klik di luar area search, BUKAN otomatis
+  // setelah pilih 1 item, biar bisa lanjut pilih item lain dari hasil yang sama.
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   function tambahKeAntrian(item: BarcodeSearchResult) {
     setQueue((prev) => {
@@ -71,8 +93,20 @@ export default function BarcodeClient() {
       }
       return [...prev, { ...item, jumlah: 1 }];
     });
+    // Sengaja TIDAK di-reset query/results, biar dropdown tetap kebuka
+    // dan bisa langsung klik produk lain dari hasil pencarian yang sama.
+    inputRef.current?.focus();
+  }
+
+  function bersihkanPencarian() {
     setQuery("");
     setResults([]);
+    setDropdownOpen(false);
+    inputRef.current?.focus();
+  }
+
+  function jumlahDiAntrian(key: string) {
+    return queue.find((q) => q.key === key)?.jumlah ?? 0;
   }
 
   function ubahJumlah(key: string, jumlah: number) {
@@ -165,31 +199,63 @@ export default function BarcodeClient() {
           )}
         </div>
 
-        <div className="relative mb-4">
+        <div ref={searchBoxRef} className="relative mb-4">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
+            ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setDropdownOpen(true);
+            }}
+            onFocus={() => {
+              if (results.length > 0) setDropdownOpen(true);
+            }}
             placeholder="Cari nama produk atau scan/ketik barcode..."
-            className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white"
+            className="w-full pl-9 pr-9 py-2.5 rounded-lg border border-gray-200 text-sm bg-white"
           />
-          {results.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
-              {results.map((r) => (
-                <button
-                  key={r.key}
-                  onClick={() => tambahKeAntrian(r)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0"
-                >
-                  <div>
-                    <div className="font-medium">{r.nama_produk}</div>
-                    <div className="text-xs text-gray-500 font-mono">
-                      {r.kode_barcode} · {r.satuan}
+          {query && (
+            <button
+              onClick={bersihkanPencarian}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+              aria-label="Hapus pencarian"
+              type="button"
+            >
+              <X size={15} />
+            </button>
+          )}
+
+          {dropdownOpen && results.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto">
+              <div className="px-3 py-1.5 text-[11px] text-gray-400 border-b bg-gray-50">
+                Klik produk buat nambah, dropdown tetap kebuka biar bisa nambah beberapa sekaligus
+              </div>
+              {results.map((r) => {
+                const sudahAda = jumlahDiAntrian(r.key);
+                return (
+                  <button
+                    key={r.key}
+                    type="button"
+                    onClick={() => tambahKeAntrian(r)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0"
+                  >
+                    <div>
+                      <div className="font-medium">{r.nama_produk}</div>
+                      <div className="text-xs text-gray-500 font-mono">
+                        {r.kode_barcode} · {r.satuan}
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-xs text-brand">+ Tambah</span>
-                </button>
-              ))}
+                    {sudahAda > 0 ? (
+                      <span className="flex items-center gap-1 text-xs text-brand font-medium shrink-0 ml-2">
+                        <Check size={13} />
+                        {sudahAda}x, tambah lagi?
+                      </span>
+                    ) : (
+                      <span className="text-xs text-brand shrink-0 ml-2">+ Tambah</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
