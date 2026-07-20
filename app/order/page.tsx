@@ -180,7 +180,7 @@ export default function OrderPage() {
     setSearchQuery("");
   }
 
-  function ambilLokasiSaya() {
+  async function ambilLokasiSaya() {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setLokasiStatus("error");
       setLokasiErrorMsg("Browser ini gak mendukung ambil lokasi otomatis, isi alamat manual aja di bawah.");
@@ -189,10 +189,26 @@ export default function OrderPage() {
     setLokasiStatus("loading");
     setLokasiErrorMsg(null);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLokasiLat(pos.coords.latitude);
-        setLokasiLng(pos.coords.longitude);
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLokasiLat(lat);
+        setLokasiLng(lng);
         setLokasiStatus("got");
+        // Coba terjemahin koordinat jadi alamat teks otomatis, biar pelanggan
+        // gampang verifikasi (bukan cuma liat angka koordinat doang).
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+            { headers: { Accept: "application/json" } }
+          );
+          const data = await res.json();
+          if (data?.display_name) {
+            setAlamatPengantaran(data.display_name);
+          }
+        } catch {
+          // Gagal nerjemahin alamat, gapapa, pelanggan tetap bisa isi manual
+        }
       },
       (err) => {
         setLokasiStatus("error");
@@ -643,6 +659,10 @@ export default function OrderPage() {
                         placeholder="Alamat lengkap (nama jalan, no rumah, patokan)"
                         className="border border-line rounded-xl w-full px-3 py-2.5 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-brand"
                       />
+                      <p className="text-xs text-ink-soft">
+                        Alamat di atas otomatis dari lokasi kamu, boleh diedit/dilengkapi kalau
+                        kurang pas (misal nama gang atau patokan tambahan).
+                      </p>
                     </div>
                   )}
                 </div>
