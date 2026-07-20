@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { simpanNoHpTamu } from "@/lib/guestHistory";
+import { createDokuPayment } from "./doku-actions";
 import type { BankAccount, Category, Product, ProductUnit } from "@/lib/types";
 
 interface CartItem {
@@ -77,7 +78,7 @@ export default function OrderPage() {
   const [cartOpen, setCartOpen] = useState(false);
 
   const [catatan, setCatatan] = useState("");
-  const [metodeBayar, setMetodeBayar] = useState<"tunai" | "transfer">("tunai");
+  const [metodeBayar, setMetodeBayar] = useState<"tunai" | "transfer" | "doku">("tunai");
   const [selectedBankId, setSelectedBankId] = useState("");
   const [buktiFile, setBuktiFile] = useState<File | null>(null);
 
@@ -222,10 +223,6 @@ export default function OrderPage() {
         
         setLokasiErrorMsg("Gagal: " + pesanDetail);
       },
-      // Penyesuaian agar lebih support iOS:
-      // - enableHighAccuracy: false (mengurangi kemungkinan timeout)
-      // - timeout: diperbesar jadi 15 detik
-      // - maximumAge: 0 (selalu minta data fresh)
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
     );
   }
@@ -252,7 +249,6 @@ export default function OrderPage() {
 
   async function handleCheckout() {
     setErrorMsg(null);
-
     if (cart.length === 0) {
       setErrorMsg("Keranjang masih kosong.");
       return;
@@ -273,19 +269,14 @@ export default function OrderPage() {
       setErrorMsg("Isi alamat lengkap dulu buat pengantaran.");
       return;
     }
-
     setSubmitting(true);
-
     try {
       const buktiUrl = metodeBayar === "transfer" ? await uploadBuktiTransfer() : null;
-
       const nomorOrder = `MSM-${new Date()
         .toISOString()
         .slice(0, 10)
         .replace(/-/g, "")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-
       const orderId = crypto.randomUUID();
-
       const { error: orderError } = await supabase.from("orders").insert({
         id: orderId,
         nomor_order: nomorOrder,
@@ -295,7 +286,10 @@ export default function OrderPage() {
         metode_bayar: metodeBayar,
         bank_account_id: metodeBayar === "transfer" ? selectedBankId : null,
         bukti_bayar_url: buktiUrl,
-        status_pembayaran: metodeBayar === "tunai" ? "belum_bayar" : "menunggu_konfirmasi",
+        status_pembayaran:
+          metodeBayar === "tunai"
+            ? "belum_bayar"
+            : "menunggu_konfirmasi",
         catatan: catatan || null,
         total_modal: totalModal,
         total_jual: totalJual,
@@ -304,11 +298,9 @@ export default function OrderPage() {
         lokasi_lng: metodeAmbil === "diantar" ? lokasiLng : null,
         alamat_pengantaran: metodeAmbil === "diantar" ? alamatPengantaran.trim() : null,
       });
-
       if (orderError) {
         throw new Error("Gagal membuat pesanan: " + orderError.message);
       }
-
       const orderItemsPayload = cart.map((item) => {
         const unit = unitOptionForCartItem(item);
         return {
@@ -322,15 +314,17 @@ export default function OrderPage() {
           subtotal: unit.hargaJual * item.qty,
         };
       });
-
       const { error: itemsError } = await supabase.from("order_items").insert(orderItemsPayload);
       if (itemsError) throw new Error("Gagal menyimpan detail pesanan: " + itemsError.message);
-
-      setSuccessOrder(nomorOrder);
       if (!customerId) {
         simpanNoHpTamu(guestNoHp);
       }
-
+      if (metodeBayar === "doku") {
+        const paymentUrl = await createDokuPayment(orderId);
+        window.location.href = paymentUrl;
+        return;
+      }
+      setSuccessOrder(nomorOrder);
       setCart([]);
       setCatatan("");
       setGuestNama("");
@@ -679,7 +673,7 @@ export default function OrderPage() {
 
                 <div className="mb-4">
                   <label className="text-sm font-medium block mb-1.5">Metode Pembayaran</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setMetodeBayar("tunai")}
@@ -702,7 +696,24 @@ export default function OrderPage() {
                     >
                       Transfer
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setMetodeBayar("doku")}
+                      className={`rounded-xl py-2.5 text-sm font-medium border ${
+                        metodeBayar === "doku"
+                          ? "bg-brand text-white border-brand"
+                          : "border-line text-ink-soft"
+                      }`}
+                    >
+                      Bayar Online
+                    </button>
                   </div>
+                  {metodeBayar === "doku" && (
+                    <p className="text-xs text-ink-soft mt-2">
+                      Kamu akan diarahkan ke halaman pembayaran (VA, QRIS, e-wallet, dll), pesanan
+                      otomatis lunas begitu pembayaran berhasil.
+                    </p>
+                  )}
 
                   {metodeBayar === "transfer" && (
                     <div className="mt-3 space-y-3">
