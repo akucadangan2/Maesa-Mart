@@ -13,6 +13,7 @@
 }
 
 @media print {
+  header,
   aside,
   .md\:hidden {
     display: none !important;

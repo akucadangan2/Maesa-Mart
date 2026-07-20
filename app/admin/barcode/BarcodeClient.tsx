@@ -26,14 +26,31 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
+function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
+  return {
+    key: "custom",
+    label: "Custom",
+    widthMm,
+    heightMm,
+    barcodeWidth: Math.max(1, Math.round((widthMm / 40) * 10) / 10),
+    barcodeHeight: Math.max(20, Math.round(heightMm * 0.6)),
+    fontSize: Math.max(7, Math.round(widthMm / 5)),
+  };
+}
+
 export default function BarcodeClient() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<BarcodeSearchResult[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [presetKey, setPresetKey] = useState(PRESETS[0].key);
+  const [presetKey, setPresetKey] = useState<string>(PRESETS[0].key);
+  const [customWidth, setCustomWidth] = useState("40");
+  const [customHeight, setCustomHeight] = useState("30");
   const svgRefs = useRef<Map<string, SVGSVGElement>>(new Map());
 
-  const preset = PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
+  const isCustom = presetKey === "custom";
+  const preset = isCustom
+    ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
+    : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -99,7 +116,7 @@ export default function BarcodeClient() {
 
         <div className="mb-4">
           <label className="text-sm font-medium block mb-1.5">Ukuran Label (sesuaikan sama roll di printer)</label>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap mb-2">
             {PRESETS.map((p) => (
               <button
                 key={p.key}
@@ -111,7 +128,41 @@ export default function BarcodeClient() {
                 {p.label}
               </button>
             ))}
+            <button
+              onClick={() => setPresetKey("custom")}
+              className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
+                isCustom ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
+              }`}
+            >
+              Custom...
+            </button>
           </div>
+
+          {isCustom && (
+            <div className="flex items-center gap-2 bg-gray-50 border rounded-lg p-3 max-w-xs">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Lebar (mm)</label>
+                <input
+                  type="number"
+                  min={10}
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(e.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm"
+                />
+              </div>
+              <span className="text-gray-400 mt-5">x</span>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Tinggi (mm)</label>
+                <input
+                  type="number"
+                  min={10}
+                  value={customHeight}
+                  onChange={(e) => setCustomHeight(e.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="relative mb-4">
