@@ -141,8 +141,10 @@ export default function BarcodeClient() {
     ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
     : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
 
+  const pageWidthMm = mode === "grid" ? Number(gridTotalWidth) || 71.9 : preset.widthMm;
+
   const kolomCount = Math.max(1, Number(gridColumns) || 1);
-  const totalWidthNum = Number(gridTotalWidth) || 120;
+  const totalWidthNum = Number(gridTotalWidth) || 71.9;
   const rowHeightNum = Number(gridRowHeight) || 22.9;
   const colWidthNum = totalWidthNum / kolomCount;
   const gridBarcodeParams = hitungBarcodeParams(colWidthNum, rowHeightNum);
@@ -649,7 +651,7 @@ export default function BarcodeClient() {
         }
         @media print {
           @page {
-            size: ${mode === "grid" ? `${totalWidthNum}mm` : `${preset.widthMm}mm`} auto;
+            size: ${pageWidthMm}mm auto;
             margin: 0;
           }
           .no-print {
