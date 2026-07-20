@@ -30,6 +30,8 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
+const STORAGE_KEY = "maesa_barcode_label_pref";
+
 function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
   return {
     key: "custom",
@@ -40,6 +42,21 @@ function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
     barcodeHeight: Math.max(20, Math.round(heightMm * 0.6)),
     fontSize: Math.max(7, Math.round(widthMm / 5)),
   };
+}
+
+function muatPreferensiTersimpan() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as { presetKey: string; customWidth: string; customHeight: string }) : null;
+  } catch {
+    return null;
+  }
+}
+
+function simpanPreferensi(presetKey: string, customWidth: string, customHeight: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ presetKey, customWidth, customHeight }));
 }
 
 export default function BarcodeClient() {
@@ -55,6 +72,31 @@ export default function BarcodeClient() {
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchSeq = useRef(0);
+
+  // Muat preferensi ukuran label yang tersimpan dari kunjungan sebelumnya
+  useEffect(() => {
+    const saved = muatPreferensiTersimpan();
+    if (saved) {
+      setPresetKey(saved.presetKey);
+      setCustomWidth(saved.customWidth);
+      setCustomHeight(saved.customHeight);
+    }
+  }, []);
+
+  function pilihPreset(key: string) {
+    setPresetKey(key);
+    simpanPreferensi(key, customWidth, customHeight);
+  }
+
+  function ubahCustomWidth(value: string) {
+    setCustomWidth(value);
+    simpanPreferensi(presetKey, value, customHeight);
+  }
+
+  function ubahCustomHeight(value: string) {
+    setCustomHeight(value);
+    simpanPreferensi(presetKey, customWidth, value);
+  }
 
   const isCustom = presetKey === "custom";
   const preset = isCustom
@@ -174,7 +216,7 @@ export default function BarcodeClient() {
             {PRESETS.map((p) => (
               <button
                 key={p.key}
-                onClick={() => setPresetKey(p.key)}
+                onClick={() => pilihPreset(p.key)}
                 className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
                   presetKey === p.key ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
                 }`}
@@ -183,7 +225,7 @@ export default function BarcodeClient() {
               </button>
             ))}
             <button
-              onClick={() => setPresetKey("custom")}
+              onClick={() => pilihPreset("custom")}
               className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
                 isCustom ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600 bg-white"
               }`}
@@ -200,7 +242,7 @@ export default function BarcodeClient() {
                   type="number"
                   min={10}
                   value={customWidth}
-                  onChange={(e) => setCustomWidth(e.target.value)}
+                  onChange={(e) => ubahCustomWidth(e.target.value)}
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 />
               </div>
@@ -211,12 +253,15 @@ export default function BarcodeClient() {
                   type="number"
                   min={10}
                   value={customHeight}
-                  onChange={(e) => setCustomHeight(e.target.value)}
+                  onChange={(e) => ubahCustomHeight(e.target.value)}
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 />
               </div>
             </div>
           )}
+          <p className="text-xs text-gray-400 mt-1.5">
+            Pilihan ukuran ini otomatis keinget buat kunjungan berikutnya di komputer ini.
+          </p>
         </div>
 
         <div ref={searchBoxRef} className="relative mb-4">
