@@ -12,8 +12,6 @@ interface MenuItem {
   label: string;
   showBadge?: boolean;
   superAdminOnly?: boolean;
-  external?: boolean;
-  highlight?: boolean;
 }
 
 interface MenuGroup {
@@ -22,18 +20,13 @@ interface MenuGroup {
 }
 
 const menuGroups: MenuGroup[] = [
-  {
-    title: null,
-    items: [
-      { href: "/admin", label: "Dashboard" },
-      { href: "/kasir", label: "Buka Kasir ↗", external: true, highlight: true },
-    ],
-  },
+  { title: null, items: [{ href: "/admin", label: "Dashboard" }] },
   {
     title: "Master",
     items: [
       { href: "/admin/kategori", label: "Kategori" },
       { href: "/admin/supplier", label: "Data Supplier" },
+      { href: "/admin/pelanggan", label: "Data Pelanggan", superAdminOnly: true },
       { href: "/admin/bank", label: "Rekening Bank", superAdminOnly: true },
     ],
   },
@@ -86,12 +79,13 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const supabase = createClient();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLDivElement>(null);
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
   const [role, setRole] = useState<string | null>(null);
-  const [showScrollHint, setShowScrollHint] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     if (pathname === "/admin/login") return;
@@ -123,28 +117,20 @@ export default function AdminLayout({
   }, [pathname]);
 
   useEffect(() => {
-    setSidebarOpen(false);
+    setOpenGroup(null);
+    setMobileOpen(false);
   }, [pathname]);
 
-  function checkScrollable() {
-    const el = scrollRef.current;
-    if (!el) return;
-    const hasMoreBelow = el.scrollHeight - el.scrollTop - el.clientHeight > 8;
-    setShowScrollHint(hasMoreBelow);
-  }
-
+  // Tutup dropdown desktop kalau klik di luar area nav
   useEffect(() => {
-    checkScrollable();
-    const el = scrollRef.current;
-    if (!el) return;
-
-    el.addEventListener("scroll", checkScrollable);
-    window.addEventListener("resize", checkScrollable);
-    return () => {
-      el.removeEventListener("scroll", checkScrollable);
-      window.removeEventListener("resize", checkScrollable);
-    };
-  }, [role, pathname]);
+    function handleClickOutside(e: MouseEvent) {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setOpenGroup(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   if (pathname === "/admin/login") {
     return <>{children}</>;
@@ -152,98 +138,175 @@ export default function AdminLayout({
 
   const isSuperAdmin = role === "super_admin";
 
+  function isGroupActive(group: MenuGroup) {
+    return group.items.some((item) => pathname === item.href);
+  }
+
   return (
-    <div className="min-h-screen">
-      <div className="md:hidden sticky top-0 z-30 bg-gray-900 text-white flex items-center justify-between px-4 py-3">
-        <span className="font-bold">Maesa Mart Admin</span>
-        <button onClick={() => setSidebarOpen(true)} aria-label="Buka menu">
-          <Menu size={22} />
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <header className="sticky top-0 z-30 bg-white border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-6">
+            <span className="font-bold text-brand whitespace-nowrap">Maesa Mart Admin</span>
 
-      <div className="flex">
-        {sidebarOpen && (
-          <div
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/40 z-40 md:hidden"
-          />
-        )}
-
-        <aside
-          className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white flex flex-col transform transition-transform duration-200 md:relative md:translate-x-0 md:z-auto ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <span className="font-bold text-lg">Maesa Mart Admin</span>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden text-white/70"
-              aria-label="Tutup menu"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="relative flex-1 min-h-0">
-            <div ref={scrollRef} className="h-full overflow-y-auto px-4 pb-2">
+            <nav ref={navRef} className="hidden md:flex items-center gap-1 relative">
               {menuGroups.map((group, gi) => {
                 const visibleItems = group.items.filter((item) => !item.superAdminOnly || isSuperAdmin);
                 if (visibleItems.length === 0) return null;
 
+                // Grup tanpa title (Dashboard) -> link langsung, bukan dropdown
+                if (!group.title) {
+                  const item = visibleItems[0];
+                  const active = pathname === item.href;
+                  return (
+                    <Link
+                      key={gi}
+                      href={item.href}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                        active ? "bg-brand/10 text-brand" : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                }
+
+                const active = isGroupActive(group);
+                const groupHasBadge = visibleItems.some((it) => it.showBadge) && pendingCount > 0;
+
                 return (
-                  <div key={gi} className={gi > 0 ? "mt-3 pt-3 border-t border-white/10" : ""}>
-                    {group.title && (
-                      <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/40">
-                        {group.title}
+                  <div key={gi} className="relative">
+                    <button
+                      onClick={() => setOpenGroup(openGroup === group.title ? null : group.title)}
+                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                        active ? "bg-brand/10 text-brand" : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {group.title}
+                      {groupHasBadge && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      )}
+                      <ChevronDown size={14} />
+                    </button>
+
+                    {openGroup === group.title && (
+                      <div className="absolute left-0 mt-1 w-56 bg-white border rounded-lg shadow-lg py-1 z-40">
+                        {visibleItems.map((item) => {
+                          const itemActive = pathname === item.href;
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              className={`flex items-center justify-between px-3 py-2 text-sm ${
+                                itemActive ? "bg-brand/10 text-brand" : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span>{item.label}</span>
+                              {item.showBadge && pendingCount > 0 && (
+                                <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-orange-500 text-white text-[10px] font-semibold">
+                                  {pendingCount}
+                                </span>
+                              )}
+                            </Link>
+                          );
+                        })}
                       </div>
                     )}
-                    <div className="space-y-1">
-                      {visibleItems.map((item) => {
-                        const active = pathname === item.href;
-                        return (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            target={item.external ? "_blank" : undefined}
-                            rel={item.external ? "noopener noreferrer" : undefined}
-                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-sm ${
-                              item.highlight
-                                ? "bg-brand font-medium"
-                                : active
-                                ? "bg-white/10 font-medium"
-                                : "text-white/80"
-                            }`}
-                          >
-                            <span>{item.label}</span>
-                            {item.showBadge && pendingCount > 0 && (
-                              <span className="min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-orange-500 text-white text-[11px] font-semibold">
-                                {pendingCount}
-                              </span>
-                            )}
-                          </Link>
-                        );
-                      })}
-                    </div>
                   </div>
                 );
               })}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href="/kasir"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:block bg-brand text-white rounded-lg px-3 py-1.5 text-sm font-medium"
+            >
+              Buka Kasir ↗
+            </Link>
+            <div className="hidden md:block">
+              <LogoutButton />
             </div>
-
-            {showScrollHint && (
-              <div className="pointer-events-none absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-gray-900 to-transparent flex items-end justify-center pb-1">
-                <ChevronDown size={16} className="text-white/50 animate-bounce" />
-              </div>
-            )}
+            <button
+              onClick={() => setMobileOpen((v) => !v)}
+              className="md:hidden text-gray-600"
+              aria-label="Buka menu"
+            >
+              {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
           </div>
+        </div>
 
-          <div className="px-4 pt-3 pb-4 border-t border-white/10">
-            <LogoutButton />
+        {/* Panel menu mobile */}
+        {mobileOpen && (
+          <div className="md:hidden border-t max-h-[75vh] overflow-y-auto">
+            {menuGroups.map((group, gi) => {
+              const visibleItems = group.items.filter((item) => !item.superAdminOnly || isSuperAdmin);
+              if (visibleItems.length === 0) return null;
+
+              if (!group.title) {
+                const item = visibleItems[0];
+                return (
+                  <Link
+                    key={gi}
+                    href={item.href}
+                    className="block px-4 py-3 text-sm font-medium border-b"
+                  >
+                    {item.label}
+                  </Link>
+                );
+              }
+
+              const expanded = mobileExpanded === group.title;
+              return (
+                <div key={gi} className="border-b">
+                  <button
+                    onClick={() => setMobileExpanded(expanded ? null : group.title)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium"
+                  >
+                    {group.title}
+                    <ChevronDown size={14} className={expanded ? "rotate-180" : ""} />
+                  </button>
+                  {expanded && (
+                    <div className="bg-gray-50">
+                      {visibleItems.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="flex items-center justify-between px-6 py-2.5 text-sm text-gray-600"
+                        >
+                          <span>{item.label}</span>
+                          {item.showBadge && pendingCount > 0 && (
+                            <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-orange-500 text-white text-[10px] font-semibold">
+                              {pendingCount}
+                            </span>
+                          )}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div className="p-4 space-y-2">
+              <Link
+                href="/kasir"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center bg-brand text-white rounded-lg py-2 text-sm font-medium"
+              >
+                Buka Kasir ↗
+              </Link>
+              <LogoutButton />
+            </div>
           </div>
-        </aside>
+        )}
+      </header>
 
-        <main className="flex-1 p-4 md:p-6 bg-gray-50 min-h-screen w-full">{children}</main>
-      </div>
+      <main className="p-4 md:p-6">{children}</main>
     </div>
   );
 }
