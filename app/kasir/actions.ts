@@ -4,7 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
 export interface KasirUnitOption {
-  product_unit_id: string | null; // null = satuan eceran dasar
+  product_unit_id: string | null;
   satuan: string;
   konversi: number;
   harga_jual: number;
@@ -17,7 +17,7 @@ export interface KasirSearchResult {
   foto_url: string | null;
   stok_tersedia_eceran: number;
   units: KasirUnitOption[];
-  matchedUnitKey: string; // "base" atau product_unit_id, dipakai buat default pilihan
+  matchedUnitKey: string;
 }
 
 function hitungHargaEfektif(hargaJual: number, diskonPersen: number) {
@@ -82,8 +82,6 @@ export async function searchKasirItems(query: string): Promise<KasirSearchResult
     resultsMap.set(p.id, buildResult(p, "base"));
   }
 
-  // Kalau match-nya dari barcode satuan besar, pastikan produknya ke-load
-  // dan default satuan-nya langsung yang sesuai barcode yang di-scan.
   const missingProductIds = (unitMatches ?? [])
     .map((u) => u.product_id)
     .filter((id) => !resultsMap.has(id));
@@ -244,6 +242,7 @@ export async function getRiwayatKasirHariIni(kasirId: string) {
 
 export async function getOnlineOrdersRingkas(filter: "pending" | "semua" = "pending") {
   const supabase = createServiceRoleClient();
+
   let query = supabase
     .from("orders")
     .select(
@@ -263,10 +262,11 @@ export async function getOnlineOrdersRingkas(filter: "pending" | "semua" = "pend
 
 export async function getOnlineOrderDetail(id: string) {
   const supabase = createServiceRoleClient();
+
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, nomor_order, status_pesanan, status_pembayaran, metode_bayar, catatan, total_jual, created_at, customers(nama, no_hp), guest_nama, guest_no_hp, order_items(nama_produk_snapshot, qty, subtotal)"
+      "id, nomor_order, status_pesanan, status_pembayaran, metode_bayar, catatan, total_jual, created_at, customers(nama, no_hp), guest_nama, guest_no_hp, metode_ambil, lokasi_lat, lokasi_lng, alamat_pengantaran, order_items(nama_produk_snapshot, qty, subtotal)"
     )
     .eq("id", id)
     .single();
