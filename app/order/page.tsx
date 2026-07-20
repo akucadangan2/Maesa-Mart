@@ -195,8 +195,7 @@ export default function OrderPage() {
         setLokasiLat(lat);
         setLokasiLng(lng);
         setLokasiStatus("got");
-        // Coba terjemahin koordinat jadi alamat teks otomatis, biar pelanggan
-        // gampang verifikasi (bukan cuma liat angka koordinat doang).
+        
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
@@ -207,16 +206,27 @@ export default function OrderPage() {
             setAlamatPengantaran(data.display_name);
           }
         } catch {
-          // Gagal nerjemahin alamat, gapapa, pelanggan tetap bisa isi manual
+          // Gagal nerjemahin alamat, biarkan user isi manual
         }
       },
       (err) => {
         setLokasiStatus("error");
-        setLokasiErrorMsg(
-          "Gagal ambil lokasi (" + err.message + "). Tetap bisa lanjut, isi alamat manual di bawah."
-        );
+        let pesanDetail = err.message;
+        
+        // Pesan error lebih ramah dan spesifik untuk iOS/Browser yang nge-block
+        if (err.code === err.PERMISSION_DENIED) {
+          pesanDetail = "Izin ditolak. Aktifkan akses lokasi untuk browser ini di Pengaturan HP kamu.";
+        } else if (err.code === err.TIMEOUT) {
+          pesanDetail = "Waktu habis (sinyal GPS lemah). Isi alamat manual saja di bawah.";
+        }
+        
+        setLokasiErrorMsg("Gagal: " + pesanDetail);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      // Penyesuaian agar lebih support iOS:
+      // - enableHighAccuracy: false (mengurangi kemungkinan timeout)
+      // - timeout: diperbesar jadi 15 detik
+      // - maximumAge: 0 (selalu minta data fresh)
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
     );
   }
 
