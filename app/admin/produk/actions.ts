@@ -150,3 +150,15 @@ export async function deleteProductUnit(id: string) {
 
   revalidatePath("/admin/produk");
 }
+
+export async function toggleProductActive(id: string, isAktif: boolean) {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from("products")
+    .update({ is_aktif: isAktif, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/produk");
+  revalidatePath("/order");
+}

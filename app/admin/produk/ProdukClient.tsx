@@ -8,12 +8,19 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  toggleProductActive,
   getProductUnits,
   createProductUnit,
   deleteProductUnit,
 } from "./actions";
 
 const PRESET_SATUAN = ["DOS", "PAK", "BOX", "RENCENG", "IKAT", "KARUNG", "KRAT", "ZAK", "LUSIN", "GTG"];
+
+const STATUS_TABS = [
+  { key: "aktif", label: "Aktif" },
+  { key: "arsip", label: "Arsip" },
+  { key: "semua", label: "Semua" },
+];
 
 function hargaEfektif(p: Product) {
   return p.diskon_persen > 0
@@ -38,6 +45,8 @@ export default function ProdukClient({
   pageSize,
   currentPage,
   currentQuery,
+  currentStatus,
+  statusCounts,
 }: {
   initialProducts: Product[];
   categories: Category[];
@@ -45,6 +54,8 @@ export default function ProdukClient({
   pageSize: number;
   currentPage: number;
   currentQuery: string;
+  currentStatus: string;
+  statusCounts: { aktif: number; arsip: number; semua: number };
 }) {
   const router = useRouter();
 
@@ -76,17 +87,18 @@ export default function ProdukClient({
   useEffect(() => {
     const t = setTimeout(() => {
       if (searchInput !== currentQuery) {
-        navigate({ page: 1, q: searchInput });
+        navigate({ page: 1, q: searchInput, status: currentStatus });
       }
     }, 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
-  function navigate(opts: { page: number; q: string; size?: number }) {
+  function navigate(opts: { page: number; q: string; size?: number; status?: string }) {
     const sp = new URLSearchParams();
     sp.set("page", String(opts.page));
     sp.set("size", String(opts.size ?? pageSize));
+    sp.set("status", opts.status ?? currentStatus);
     if (opts.q) sp.set("q", opts.q);
     router.push(`/admin/produk?${sp.toString()}`);
   }
@@ -153,16 +165,25 @@ export default function ProdukClient({
     if (!confirm(`Hapus produk "${product.nama}"?`)) return;
     setIsPending(true);
     deleteProduct(product.id)
-      .then(() => {
+      .then((result) => {
         router.refresh();
+        if (result.archived) {
+          alert(
+            `"${product.nama}" udah pernah dipakai di transaksi, jadi otomatis diarsipkan (bisa dilihat di tab Arsip) daripada dihapus permanen. Riwayat transaksi lama tetap aman.`
+          );
+        }
       })
       .catch((err) => {
-        alert(
-          err instanceof Error
-            ? err.message
-            : "Gagal menghapus produk. Kalau produk ini udah pernah dipakai di transaksi/pembelian, coba nonaktifkan aja lewat Edit > hilangkan centang 'Tampilkan di katalog'."
-        );
+        alert(err instanceof Error ? err.message : "Gagal menghapus produk.");
       })
+      .finally(() => setIsPending(false));
+  }
+
+  function handleToggleActive(product: Product) {
+    setIsPending(true);
+    toggleProductActive(product.id, !product.is_aktif)
+      .then(() => router.refresh())
+      .catch((err) => alert(err instanceof Error ? err.message : "Gagal mengubah status."))
       .finally(() => setIsPending(false));
   }
 
@@ -217,6 +238,29 @@ export default function ProdukClient({
       </div>
 
       <div className="flex gap-2 mb-4">
+        {STATUS_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => navigate({ page: 1, q: currentQuery, status: t.key })}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${
+              currentStatus === t.key
+                ? "bg-brand text-white border-brand"
+                : "bg-white text-gray-600 border-gray-200"
+            }`}
+          >
+            {t.label}
+            <span
+              className={`text-[11px] px-1.5 rounded-full ${
+                currentStatus === t.key ? "bg-white/20" : "bg-gray-100"
+              }`}
+            >
+              {statusCounts[t.key as keyof typeof statusCounts]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-4">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -256,7 +300,11 @@ export default function ProdukClient({
           {initialProducts.length === 0 ? (
             <tr>
               <td colSpan={10} className="p-4 text-center text-gray-400 italic">
-                {currentQuery ? `Gak ada produk yang cocok dengan "${currentQuery}".` : "Belum ada produk."}
+                {currentQuery
+                  ? `Gak ada produk yang cocok dengan "${currentQuery}".`
+                  : currentStatus === "arsip"
+                  ? "Belum ada produk yang diarsipkan."
+                  : "Belum ada produk."}
               </td>
             </tr>
           ) : (
@@ -297,16 +345,30 @@ export default function ProdukClient({
                       p.is_aktif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
                     }`}
                   >
-                    {p.is_aktif ? "Aktif" : "Nonaktif"}
+                    {p.is_aktif ? "Aktif" : "Arsip"}
                   </span>
                 </td>
-                <td className="p-3 space-x-2">
+                <td className="p-3 space-x-2 whitespace-nowrap">
                   <button onClick={() => openEdit(p)} className="text-brand text-xs">
                     Edit
                   </button>
-                  <button onClick={() => handleDelete(p)} disabled={isPending} className="text-red-500 text-xs">
-                    Hapus
-                  </button>
+                  {p.is_aktif ? (
+                    <button
+                      onClick={() => handleDelete(p)}
+                      disabled={isPending}
+                      className="text-red-500 text-xs"
+                    >
+                      Hapus
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleActive(p)}
+                      disabled={isPending}
+                      className="text-brand text-xs"
+                    >
+                      Aktifkan Kembali
+                    </button>
+                  )}
                 </td>
               </tr>
             ))
