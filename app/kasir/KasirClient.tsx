@@ -15,7 +15,6 @@ import {
   X,
   Loader2,
   Phone,
-  MapPin,
   Image as ImageIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -48,7 +47,34 @@ interface PendingDraft {
   namaPembeli: string;
 }
 
-type MetodeBayar = "tunai" | "kartu" | "transfer" | "ewallet";
+type KategoriBayar = "tunai" | "kartu" | "transfer" | "ewallet";
+
+interface MetodeBayarOption {
+  id: string;
+  name: string;
+  kategori: KategoriBayar;
+}
+
+const METODE_BAYAR_OPTIONS: MetodeBayarOption[] = [
+  { id: "cash", name: "Tunai", kategori: "tunai" },
+  { id: "debit_card", name: "Kartu Debit", kategori: "kartu" },
+  { id: "credit_card", name: "Kartu Kredit", kategori: "kartu" },
+  { id: "debit_mandiri", name: "Debit Mandiri", kategori: "kartu" },
+  { id: "debit_bri", name: "Debit BRI", kategori: "kartu" },
+  { id: "debit_bsg", name: "Debit BSG", kategori: "kartu" },
+  { id: "debit_bni", name: "Debit BNI", kategori: "kartu" },
+  { id: "ovo", name: "OVO", kategori: "ewallet" },
+  { id: "gopay", name: "Gopay", kategori: "ewallet" },
+  { id: "dana", name: "Dana", kategori: "ewallet" },
+  { id: "qris_mandiri", name: "Qris Mandiri", kategori: "transfer" },
+  { id: "debit_bca", name: "Debit BCA", kategori: "kartu" },
+  { id: "qris_bni", name: "Qris BNI", kategori: "transfer" },
+  { id: "qris_bca", name: "Qris BCA", kategori: "transfer" },
+  { id: "debit_maybank", name: "Debit Maybank", kategori: "kartu" },
+  { id: "shopee_pay", name: "Shopee", kategori: "ewallet" },
+  { id: "all_credit_card", name: "All Kartu Kredit", kategori: "kartu" },
+  { id: "qris_bri", name: "Qris BRI", kategori: "transfer" },
+];
 
 function unitKeyOf(u: KasirUnitOption) {
   return u.product_unit_id ?? "base";
@@ -91,6 +117,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   });
 
   const [query, setQuery] = useState("");
+  const [jumlahScan, setJumlahScan] = useState("1");
   const [results, setResults] = useState<KasirSearchResult[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [pendingList, setPendingList] = useState<PendingDraft[]>([]);
@@ -100,8 +127,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const [kodePembeli, setKodePembeli] = useState("");
   const [namaPembeli, setNamaPembeli] = useState("");
   const [diskonManual, setDiskonManual] = useState("");
-  const [metodeBayar, setMetodeBayar] = useState<MetodeBayar>("tunai");
-  const [detailBayar, setDetailBayar] = useState("");
+  const [metodeBayarId, setMetodeBayarId] = useState("cash");
   const [noReferensi, setNoReferensi] = useState("");
   const [uangDiterima, setUangDiterima] = useState("");
 
@@ -122,6 +148,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
 
   const searchSeq = useRef(0);
+
+  const metodeBayarOption =
+    METODE_BAYAR_OPTIONS.find((o) => o.id === metodeBayarId) ?? METODE_BAYAR_OPTIONS[0];
+  const isTunai = metodeBayarOption.id === "cash";
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -165,7 +195,6 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // List di dalam modal ikut refresh otomatis kalau lagi kebuka
   useEffect(() => {
     if (!onlineOpen) return;
     const channel = supabase
@@ -184,13 +213,14 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   function tambahKeCart(item: KasirSearchResult) {
     const unit = item.units.find((u) => unitKeyOf(u) === item.matchedUnitKey) ?? item.units[0];
     const key = unitKeyOf(unit);
+    const jumlah = Math.max(1, Number(jumlahScan) || 1);
 
     setCart((prev) => {
       const existing = prev.find((c) => c.product_id === item.product_id && c.selectedUnitKey === key);
       if (existing) {
         return prev.map((c) =>
           c.product_id === item.product_id && c.selectedUnitKey === key
-            ? { ...c, qty: c.qty + 1 }
+            ? { ...c, qty: c.qty + jumlah }
             : c
         );
       }
@@ -203,12 +233,13 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           stok_tersedia_eceran: item.stok_tersedia_eceran,
           units: item.units,
           selectedUnitKey: key,
-          qty: 1,
+          qty: jumlah,
         },
       ];
     });
     setQuery("");
     setResults([]);
+    setJumlahScan("1");
     inputRef.current?.focus();
   }
 
@@ -239,15 +270,14 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const diskonNum = parseRibuan(diskonManual);
   const totalSetelahDiskon = Math.max(0, subtotal - diskonNum);
   const uangDiterimaNum = parseRibuan(uangDiterima);
-  const kembalian = metodeBayar === "tunai" ? uangDiterimaNum - totalSetelahDiskon : null;
+  const kembalian = isTunai ? uangDiterimaNum - totalSetelahDiskon : null;
 
   function resetSemua() {
     setCart([]);
     setKodePembeli("");
     setNamaPembeli("");
     setDiskonManual("");
-    setMetodeBayar("tunai");
-    setDetailBayar("");
+    setMetodeBayarId("cash");
     setNoReferensi("");
     setUangDiterima("");
   }
@@ -281,7 +311,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
       setErrorMsg("Keranjang masih kosong.");
       return;
     }
-    if (metodeBayar === "tunai" && uangDiterimaNum < totalSetelahDiskon) {
+    if (isTunai && uangDiterimaNum < totalSetelahDiskon) {
       setErrorMsg("Uang diterima kurang dari total.");
       return;
     }
@@ -290,10 +320,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     try {
       const result = await createPosSale({
         kasir_id: staffId,
-        metode_bayar: metodeBayar,
-        detail_bayar: metodeBayar === "tunai" ? null : detailBayar || null,
-        no_referensi: metodeBayar === "tunai" ? null : noReferensi || null,
-        uang_diterima: metodeBayar === "tunai" ? uangDiterimaNum : null,
+        metode_bayar: metodeBayarOption.kategori,
+        detail_bayar: isTunai ? null : metodeBayarOption.name,
+        no_referensi: isTunai ? null : noReferensi || null,
+        uang_diterima: isTunai ? uangDiterimaNum : null,
         diskon_manual: diskonNum,
         nama_pembeli_pos: namaPembeli || null,
         kode_pembeli_pos: kodePembeli || null,
@@ -363,8 +393,8 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-20 bg-white border-b px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+    <main className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      <header className="shrink-0 bg-white border-b px-4 py-3 flex items-center justify-between flex-wrap gap-2">
         <div className="font-semibold text-sm">Kasir POS</div>
         <div className="flex items-center gap-2">
           <button
@@ -404,9 +434,9 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto p-4">
-        <div className="flex flex-col md:flex-row gap-3 mb-4">
-          <div className="flex-1 bg-white border rounded-xl p-4 grid grid-cols-3 gap-3">
+      <div className="flex-1 flex flex-col overflow-hidden p-4 max-w-5xl mx-auto w-full">
+        <div className="shrink-0 flex flex-col md:flex-row gap-3 mb-3">
+          <div className="flex-1 bg-white border rounded-xl p-3 grid grid-cols-3 gap-3">
             <div>
               <div className="text-xs text-gray-400 mb-0.5">No. Invoice</div>
               <div className="font-mono text-sm font-medium truncate">{draftInvoiceNo}</div>
@@ -423,50 +453,60 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
             </div>
           </div>
 
-          <div className="bg-brand rounded-xl p-4 flex flex-col justify-center md:w-72 shrink-0">
+          <div className="bg-brand rounded-xl p-3 flex flex-col justify-center md:w-64 shrink-0">
             <div className="text-xs text-white/80 mb-0.5">TOTAL HARGA</div>
-            <div className="text-4xl font-bold font-mono text-white leading-tight">
+            <div className="text-3xl font-bold font-mono text-white leading-tight">
               Rp{subtotal.toLocaleString("id-ID")}
             </div>
           </div>
         </div>
 
-        <div className="relative mb-4">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <div className="shrink-0 flex gap-2 mb-3">
           <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Scan barcode atau ketik nama produk..."
-            className="w-full pl-9 pr-3 py-3 rounded-xl border text-sm bg-white"
+            type="number"
+            min={1}
+            value={jumlahScan}
+            onChange={(e) => setJumlahScan(e.target.value)}
+            className="w-16 shrink-0 rounded-xl border text-sm bg-white text-center px-2 py-3"
+            title="Jumlah per scan"
           />
-          {results.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-lg max-h-64 overflow-y-auto">
-              {results.map((r) => {
-                const unit = r.units.find((u) => unitKeyOf(u) === r.matchedUnitKey) ?? r.units[0];
-                return (
-                  <button
-                    key={r.product_id}
-                    onClick={() => tambahKeCart(r)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0"
-                  >
-                    <div>
-                      <div className="font-medium">{r.nama_produk}</div>
-                      <div className="text-xs text-gray-500">
-                        {unit.satuan} · Rp{unit.harga_jual.toLocaleString("id-ID")} · stok{" "}
-                        {r.stok_tersedia_eceran}
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Scan barcode atau ketik nama produk..."
+              className="w-full pl-9 pr-3 py-3 rounded-xl border text-sm bg-white"
+            />
+            {results.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full bg-white border rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                {results.map((r) => {
+                  const unit = r.units.find((u) => unitKeyOf(u) === r.matchedUnitKey) ?? r.units[0];
+                  return (
+                    <button
+                      key={r.product_id}
+                      onClick={() => tambahKeCart(r)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0"
+                    >
+                      <div>
+                        <div className="font-medium">{r.nama_produk}</div>
+                        <div className="text-xs text-gray-500">
+                          {unit.satuan} · Rp{unit.harga_jual.toLocaleString("id-ID")} · stok{" "}
+                          {r.stok_tersedia_eceran}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-xs text-brand">+ Tambah</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                      <span className="text-xs text-brand">+ Tambah</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl border overflow-hidden mb-4">
+        <div className="flex-1 overflow-y-auto bg-white rounded-xl border mb-3">
           {cart.length === 0 ? (
             <p className="text-sm text-gray-400 italic text-center py-10">
               Keranjang kosong, scan atau cari produk di atas.
@@ -474,7 +514,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-brand text-white">
+                <thead className="bg-brand text-white sticky top-0">
                   <tr>
                     <th className="p-2.5 text-xs font-medium text-left w-8">No</th>
                     <th className="p-2.5 text-xs font-medium text-left w-12">Foto</th>
@@ -574,7 +614,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
         </div>
 
         {cart.length > 0 && (
-          <div className="flex gap-2">
+          <div className="shrink-0 flex gap-2">
             <button
               onClick={handleTahan}
               className="flex-1 flex items-center justify-center gap-1.5 border rounded-xl py-2.5 text-sm font-medium text-gray-600 bg-white"
@@ -647,21 +687,19 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
             </div>
 
             <label className="text-xs font-medium block mb-1">Metode Bayar</label>
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {(["tunai", "kartu", "transfer", "ewallet"] as MetodeBayar[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMetodeBayar(m)}
-                  className={`rounded-lg py-2 text-xs font-medium border capitalize ${
-                    metodeBayar === m ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
-                  }`}
-                >
-                  {m}
-                </button>
+            <select
+              value={metodeBayarId}
+              onChange={(e) => setMetodeBayarId(e.target.value)}
+              className="border rounded-lg w-full px-3 py-2.5 text-sm bg-white mb-3"
+            >
+              {METODE_BAYAR_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
               ))}
-            </div>
+            </select>
 
-            {metodeBayar === "tunai" ? (
+            {isTunai ? (
               <div className="mb-3">
                 <label className="text-xs font-medium block mb-1">Uang Diterima</label>
                 <input
@@ -682,24 +720,13 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="text-xs font-medium block mb-1">Nama Bank/Platform</label>
-                  <input
-                    value={detailBayar}
-                    onChange={(e) => setDetailBayar(e.target.value)}
-                    placeholder="Contoh: BCA, OVO"
-                    className="border rounded-lg w-full px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium block mb-1">No Referensi (opsional)</label>
-                  <input
-                    value={noReferensi}
-                    onChange={(e) => setNoReferensi(e.target.value)}
-                    className="border rounded-lg w-full px-3 py-2 text-sm"
-                  />
-                </div>
+              <div className="mb-3">
+                <label className="text-xs font-medium block mb-1">No Referensi (opsional)</label>
+                <input
+                  value={noReferensi}
+                  onChange={(e) => setNoReferensi(e.target.value)}
+                  className="border rounded-lg w-full px-3 py-2 text-sm"
+                />
               </div>
             )}
 
@@ -790,6 +817,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                     status_pesanan: "selesai",
                     total_jual: receipt.total_jual,
                     items: receipt.items,
+                    kasir_nama: staffNama,
+                    nama_pembeli: (receipt as any).nama_pembeli,
+                    detail_bayar: (receipt as any).detail_bayar,
+                    no_referensi: (receipt as any).no_referensi,
                   })
                 }
                 className="flex-1 border rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-1.5"
@@ -841,9 +872,14 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                             metode_bayar: r.metode_bayar,
                             status_pesanan: "selesai",
                             total_jual: r.total_jual,
+                            kasir_nama: staffNama,
+                            nama_pembeli: (r as any).nama_pembeli_pos,
+                            detail_bayar: (r as any).detail_bayar,
+                            no_referensi: (r as any).no_referensi,
                             items: (r.order_items ?? []).map((it: any) => ({
                               nama: it.nama_produk_snapshot,
                               qty: it.qty,
+                              harga_satuan: it.harga_jual_saat_itu,
                               subtotal: it.subtotal,
                             })),
                           })
@@ -972,25 +1008,6 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                                   <div className="text-xs text-gray-600 pt-1 border-t">
                                     <span className="text-gray-400">Catatan: </span>
                                     {detail.catatan}
-                                  </div>
-                                )}
-                                {detail.metode_ambil === "diantar" && (
-                                  <div className="text-xs bg-orange-50 border border-orange-100 rounded p-2 space-y-1">
-                                    <div className="flex items-center gap-1 font-medium text-orange-700">
-                                      <MapPin size={12} />
-                                      Minta Diantar
-                                    </div>
-                                    {detail.alamat_pengantaran && <div>{detail.alamat_pengantaran}</div>}
-                                    {detail.lokasi_lat && detail.lokasi_lng && (
-                                      <a
-                                        href={`https://www.google.com/maps?q=${detail.lokasi_lat},${detail.lokasi_lng}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-brand underline block"
-                                      >
-                                        Buka lokasi di Google Maps
-                                      </a>
-                                    )}
                                   </div>
                                 )}
                                 {((detail.customers as any)?.no_hp || detail.guest_no_hp) && (
