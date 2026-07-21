@@ -84,13 +84,31 @@ export async function updateProduct(id: string, formData: FormData) {
   revalidatePath("/order");
 }
 
-export async function deleteProduct(id: string) {
+export async function deleteProduct(id: string): Promise<{ archived: boolean }> {
   const supabase = createServiceRoleClient();
   const { error } = await supabase.from("products").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+
+  if (error) {
+    if (error.code === "23503") {
+      // Udah kepakai di transaksi, gak bisa dihapus permanen. Otomatis
+      // diarsipkan (nonaktifkan) aja, biar tetap cukup 1 klik dari admin.
+      const { error: archiveError } = await supabase
+        .from("products")
+        .update({ is_aktif: false, updated_at: new Date().toISOString() })
+        .eq("id", id);
+
+      if (archiveError) throw new Error(archiveError.message);
+
+      revalidatePath("/admin/produk");
+      revalidatePath("/order");
+      return { archived: true };
+    }
+    throw new Error(error.message);
+  }
 
   revalidatePath("/admin/produk");
   revalidatePath("/order");
+  return { archived: false };
 }
 
 // ===== Satuan besar (DOS/PAK) per produk =====
