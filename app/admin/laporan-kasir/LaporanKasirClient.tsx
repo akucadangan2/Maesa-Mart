@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Printer } from "lucide-react";
+import { Printer, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 
 interface StaffOption {
   id: string;
@@ -49,17 +50,56 @@ export default function LaporanKasirClient({
   const namaKasirTerpilih =
     kasirId === "semua" ? "Semua Kasir" : staffList.find((s) => s.id === kasirId)?.nama ?? "-";
 
+  function handleExportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    const ringkasanSheet = XLSX.utils.aoa_to_sheet([
+      ["Laporan Penjualan Kasir"],
+      [`Periode: ${dari} s/d ${sampai}`],
+      [`Kasir: ${namaKasirTerpilih}`],
+      [],
+      ["Jumlah Transaksi", summary.totalTransaksi],
+      ["Total Omzet", summary.totalOmzet],
+      ["Tunai", summary.totalTunai],
+      ["Transfer", summary.totalTransfer],
+      ["Kartu", summary.totalKartu],
+    ]);
+    XLSX.utils.book_append_sheet(wb, ringkasanSheet, "Ringkasan");
+
+    if (kasirId === "semua" && rekapPerKasir.length > 0) {
+      const rekapSheet = XLSX.utils.json_to_sheet(
+        rekapPerKasir.map((r) => ({
+          Kasir: r.nama,
+          "Jumlah Transaksi": r.jumlah_transaksi,
+          "Total Omzet": r.total_omzet,
+        }))
+      );
+      XLSX.utils.book_append_sheet(wb, rekapSheet, "Rekap per Kasir");
+    }
+
+    XLSX.writeFile(wb, `laporan-kasir-${dari}_${sampai}.xlsx`);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold">Laporan Penjualan Kasir</h1>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 bg-brand text-white rounded-lg px-4 py-2 text-sm"
-        >
-          <Printer size={15} />
-          Cetak
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 border border-brand text-brand rounded-lg px-4 py-2 text-sm"
+          >
+            <Download size={15} />
+            Export Excel
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 bg-brand text-white rounded-lg px-4 py-2 text-sm"
+          >
+            <Printer size={15} />
+            Cetak
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6 bg-white border rounded-lg p-4">

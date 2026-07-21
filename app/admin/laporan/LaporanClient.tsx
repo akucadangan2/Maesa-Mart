@@ -11,6 +11,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import type { LaporanKeuntunganHarian } from "@/lib/types";
 
 type Mode = "harian" | "bulanan";
@@ -72,11 +74,46 @@ export default function LaporanClient({ data }: { data: LaporanKeuntunganHarian[
   const totalModal = normalized.reduce((sum, d) => sum + d.total_modal, 0);
   const totalLaba = normalized.reduce((sum, d) => sum + d.total_laba, 0);
 
+  function handleExportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    const dataSheet = XLSX.utils.json_to_sheet(
+      normalized
+        .slice()
+        .sort((a, b) => a.tanggal.localeCompare(b.tanggal))
+        .map((d) => ({
+          Tanggal: d.tanggal,
+          Omzet: d.total_omzet,
+          Modal: d.total_modal,
+          Laba: d.total_laba,
+        }))
+    );
+    XLSX.utils.book_append_sheet(wb, dataSheet, "Laporan Harian");
+
+    const ringkasanSheet = XLSX.utils.aoa_to_sheet([
+      ["Ringkasan (Semua Waktu)"],
+      [],
+      ["Total Omzet", totalOmzet],
+      ["Total Modal", totalModal],
+      ["Total Laba", totalLaba],
+    ]);
+    XLSX.utils.book_append_sheet(wb, ringkasanSheet, "Ringkasan");
+
+    XLSX.writeFile(wb, `laporan-keuntungan-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold">Laporan Keuntungan</h1>
         <div className="flex gap-2">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 border border-brand text-brand rounded-lg px-3 py-1.5 text-sm"
+          >
+            <Download size={15} />
+            Export Excel
+          </button>
           <button
             onClick={() => setMode("harian")}
             className={`text-sm px-3 py-1.5 rounded-lg ${
