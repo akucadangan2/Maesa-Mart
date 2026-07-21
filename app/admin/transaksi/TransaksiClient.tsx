@@ -73,7 +73,9 @@ export default function TransaksiClient({
   currentPage,
   currentStatus,
   currentQuery,
+  currentMetode,
   statusCounts,
+  metodeCounts,
 }: {
   orders: OrderListRow[];
   totalCount: number;
@@ -81,7 +83,9 @@ export default function TransaksiClient({
   currentPage: number;
   currentStatus: string;
   currentQuery: string;
+  currentMetode: string;
   statusCounts: Record<string, number>;
+  metodeCounts: { doku: number; manual: number };
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -102,13 +106,36 @@ export default function TransaksiClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
-  function navigate(opts: { status: string; page: number; q: string; size?: number }) {
+  function navigate(opts: { status: string; page: number; q: string; size?: number; metode?: string }) {
     const sp = new URLSearchParams();
     sp.set("status", opts.status);
     sp.set("page", String(opts.page));
     sp.set("size", String(opts.size ?? pageSize));
+    sp.set("metode", opts.metode ?? currentMetode);
     if (opts.q) sp.set("q", opts.q);
     router.push(`/admin/transaksi?${sp.toString()}`);
+  }
+
+  async function handleSyncDoku(id: string, manual: boolean) {
+    setSyncingDokuId(id);
+    try {
+      const result = await syncDokuPaymentStatus(id);
+      if (result.updated) {
+        setDetailCache((prev) => {
+          if (!prev[id]) return prev;
+          return { ...prev, [id]: { ...prev[id], status_pembayaran: "lunas" } };
+        });
+        router.refresh();
+      } else if (manual) {
+        alert(`Status di DOKU: ${result.status}. Belum berubah jadi lunas.`);
+      }
+    } catch (err) {
+      if (manual) {
+        alert(err instanceof Error ? err.message : "Gagal cek status DOKU");
+      }
+    } finally {
+      setSyncingDokuId(null);
+    }
   }
 
   async function toggleExpand(id: string) {
@@ -122,6 +149,17 @@ export default function TransaksiClient({
       try {
         const detail = (await getOrderDetail(id)) as OrderDetail;
         setDetailCache((prev) => ({ ...prev, [id]: detail }));
+
+        // Pesanan DOKU yang belum lunas, otomatis dicek di belakang layar,
+        // gak perlu klik manual. Gak dijalanin kalau lagi di tab Tunai/Transfer
+        // (mustahil ada order DOKU di situ, jadi gak perlu buang request).
+        if (
+          detail.metode_bayar === "doku" &&
+          detail.status_pembayaran !== "lunas" &&
+          currentMetode !== "manual"
+        ) {
+          handleSyncDoku(id, false);
+        }
       } finally {
         setLoadingDetailId(null);
       }
@@ -154,31 +192,44 @@ export default function TransaksiClient({
     });
   }
 
-  async function handleSyncDoku(id: string) {
-    setSyncingDokuId(id);
-    try {
-      const result = await syncDokuPaymentStatus(id);
-      if (result.updated) {
-        setDetailCache((prev) => {
-          if (!prev[id]) return prev;
-          return { ...prev, [id]: { ...prev[id], status_pembayaran: "lunas" } };
-        });
-        router.refresh();
-      } else {
-        alert(`Status di DOKU: ${result.status}. Belum berubah jadi lunas.`);
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal cek status DOKU");
-    } finally {
-      setSyncingDokuId(null);
-    }
-  }
-
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <div>
       <h1 className="text-xl font-bold mb-4">Transaksi</h1>
+
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => navigate({ status: currentStatus, page: 1, q: currentQuery, metode: "semua" })}
+          className={`text-xs px-3 py-1.5 rounded-full font-medium border ${
+            currentMetode === "semua"
+              ? "bg-gray-800 text-white border-gray-800"
+              : "bg-white text-gray-600 border-gray-200"
+          }`}
+        >
+          Semua Metode
+        </button>
+        <button
+          onClick={() => navigate({ status: currentStatus, page: 1, q: currentQuery, metode: "doku" })}
+          className={`text-xs px-3 py-1.5 rounded-full font-medium border ${
+            currentMetode === "doku"
+              ? "bg-gray-800 text-white border-gray-800"
+              : "bg-white text-gray-600 border-gray-200"
+          }`}
+        >
+          DOKU (Auto Bayar) · {metodeCounts.doku}
+        </button>
+        <button
+          onClick={() => navigate({ status: currentStatus, page: 1, q: currentQuery, metode: "manual" })}
+          className={`text-xs px-3 py-1.5 rounded-full font-medium border ${
+            currentMetode === "manual"
+              ? "bg-gray-800 text-white border-gray-800"
+              : "bg-white text-gray-600 border-gray-200"
+          }`}
+        >
+          Tunai/Transfer · {metodeCounts.manual}
+        </button>
+      </div>
 
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
         {TABS.map((t) => (
@@ -318,12 +369,20 @@ export default function TransaksiClient({
                         </div>
                       )}
 
-                      <div className="text-sm text-gray-500">
-                        Metode bayar: <span className="font-medium">{detail.metode_bayar}</span>
-                        {detail.bank_accounts && (
-                          <span>
-                            {" "}
-                            · {detail.bank_accounts.nama_bank} {detail.bank_accounts.no_rekening}
+                      <div className="text-sm text-gray-500 flex items-center gap-2">
+                        <span>
+                          Metode bayar: <span className="font-medium">{detail.metode_bayar}</span>
+                          {detail.bank_accounts && (
+                            <span>
+                              {" "}
+                              · {detail.bank_accounts.nama_bank} {detail.bank_accounts.no_rekening}
+                            </span>
+                          )}
+                        </span>
+                        {detail.metode_bayar === "doku" && syncingDokuId === order.id && (
+                          <span className="flex items-center gap-1 text-xs text-brand">
+                            <Loader2 size={11} className="animate-spin" />
+                            Cek status DOKU...
                           </span>
                         )}
                       </div>
@@ -372,10 +431,10 @@ export default function TransaksiClient({
                         {detail.metode_bayar === "doku" && detail.status_pembayaran !== "lunas" && (
                           <button
                             disabled={syncingDokuId === order.id}
-                            onClick={() => handleSyncDoku(order.id)}
+                            onClick={() => handleSyncDoku(order.id, true)}
                             className="border border-brand text-brand text-xs px-3 py-1.5 rounded-lg disabled:opacity-50"
                           >
-                            {syncingDokuId === order.id ? "Mengecek..." : "Cek Status DOKU"}
+                            {syncingDokuId === order.id ? "Mengecek..." : "Cek Ulang Status"}
                           </button>
                         )}
                         {detail.status_pembayaran !== "lunas" && (
