@@ -8,7 +8,6 @@ import {
   X,
   CheckCircle2,
   Image as ImageIcon,
-  UploadCloud,
   Trash2,
   Search,
   Receipt,
@@ -18,7 +17,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { simpanNoHpTamu } from "@/lib/guestHistory";
 import { createDokuPayment } from "./doku-actions";
-import type { BankAccount, Category, Product, ProductUnit } from "@/lib/types";
+import type { Category, Product, ProductUnit } from "@/lib/types";
 
 interface CartItem {
   product: Product;
@@ -62,6 +61,7 @@ function getUnitOptions(product: Product, unitsMap: Record<string, ProductUnit[]
 }
 
 type LokasiStatus = "idle" | "loading" | "got" | "error";
+type MetodeBayar = "tunai" | "doku";
 
 export default function OrderPage() {
   const supabase = createClient();
@@ -69,7 +69,6 @@ export default function OrderPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productUnitsMap, setProductUnitsMap] = useState<Record<string, ProductUnit[]>>({});
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -78,9 +77,7 @@ export default function OrderPage() {
   const [cartOpen, setCartOpen] = useState(false);
 
   const [catatan, setCatatan] = useState("");
-  const [metodeBayar, setMetodeBayar] = useState<"tunai" | "transfer" | "doku">("tunai");
-  const [selectedBankId, setSelectedBankId] = useState("");
-  const [buktiFile, setBuktiFile] = useState<File | null>(null);
+  const [metodeBayar, setMetodeBayar] = useState<MetodeBayar>("tunai");
 
   const [metodeAmbil, setMetodeAmbil] = useState<"ambil_sendiri" | "diantar">("ambil_sendiri");
   const [lokasiLat, setLokasiLat] = useState<number | null>(null);
@@ -99,14 +96,12 @@ export default function OrderPage() {
 
   useEffect(() => {
     async function loadData() {
-      const [{ data: cats }, { data: prods }, { data: units }, { data: banks }, { data: userData }] =
-        await Promise.all([
-          supabase.from("categories").select("*").order("urutan"),
-          supabase.from("products").select("*").eq("is_aktif", true),
-          supabase.from("product_units").select("*").not("harga_jual", "is", null),
-          supabase.from("bank_accounts").select("*").eq("is_aktif", true),
-          supabase.auth.getUser(),
-        ]);
+      const [{ data: cats }, { data: prods }, { data: units }, { data: userData }] = await Promise.all([
+        supabase.from("categories").select("*").order("urutan"),
+        supabase.from("products").select("*").eq("is_aktif", true),
+        supabase.from("product_units").select("*").not("harga_jual", "is", null),
+        supabase.auth.getUser(),
+      ]);
 
       setCategories(cats ?? []);
       setProducts(prods ?? []);
@@ -118,7 +113,6 @@ export default function OrderPage() {
       }
       setProductUnitsMap(unitsMap);
 
-      setBankAccounts(banks ?? []);
       setActiveCategory(cats?.[0]?.id ?? null);
 
       if (userData?.user) {
@@ -196,7 +190,7 @@ export default function OrderPage() {
         setLokasiLat(lat);
         setLokasiLng(lng);
         setLokasiStatus("got");
-        
+
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
@@ -213,14 +207,13 @@ export default function OrderPage() {
       (err) => {
         setLokasiStatus("error");
         let pesanDetail = err.message;
-        
-        // Pesan error lebih ramah dan spesifik untuk iOS/Browser yang nge-block
+
         if (err.code === err.PERMISSION_DENIED) {
           pesanDetail = "Izin ditolak. Aktifkan akses lokasi untuk browser ini di Pengaturan HP kamu.";
         } else if (err.code === err.TIMEOUT) {
           pesanDetail = "Waktu habis (sinyal GPS lemah). Isi alamat manual saja di bawah.";
         }
-        
+
         setLokasiErrorMsg("Gagal: " + pesanDetail);
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
@@ -234,19 +227,6 @@ export default function OrderPage() {
   }, 0);
   const totalItemDiKeranjang = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  async function uploadBuktiTransfer(): Promise<string | null> {
-    if (!buktiFile) return null;
-
-    const ext = buktiFile.name.split(".").pop();
-    const fileName = `${crypto.randomUUID()}.${ext}`;
-
-    const { error } = await supabase.storage.from("bukti-transfer").upload(fileName, buktiFile);
-    if (error) throw new Error("Upload bukti transfer gagal: " + error.message);
-
-    const { data } = supabase.storage.from("bukti-transfer").getPublicUrl(fileName);
-    return data.publicUrl;
-  }
-
   async function handleCheckout() {
     setErrorMsg(null);
     if (cart.length === 0) {
@@ -257,21 +237,12 @@ export default function OrderPage() {
       setErrorMsg("Isi nama dan nomor HP dulu, biar bisa dihubungi soal pesanannya.");
       return;
     }
-    if (metodeBayar === "transfer" && !selectedBankId) {
-      setErrorMsg("Pilih bank tujuan transfer dulu.");
-      return;
-    }
-    if (metodeBayar === "transfer" && !buktiFile) {
-      setErrorMsg("Upload bukti transfer dulu.");
-      return;
-    }
     if (metodeAmbil === "diantar" && !alamatPengantaran.trim()) {
       setErrorMsg("Isi alamat lengkap dulu buat pengantaran.");
       return;
     }
     setSubmitting(true);
     try {
-      const buktiUrl = metodeBayar === "transfer" ? await uploadBuktiTransfer() : null;
       const nomorOrder = `MSM-${new Date()
         .toISOString()
         .slice(0, 10)
@@ -284,12 +255,9 @@ export default function OrderPage() {
         guest_nama: customerId ? null : guestNama,
         guest_no_hp: customerId ? null : guestNoHp,
         metode_bayar: metodeBayar,
-        bank_account_id: metodeBayar === "transfer" ? selectedBankId : null,
-        bukti_bayar_url: buktiUrl,
-        status_pembayaran:
-          metodeBayar === "tunai"
-            ? "belum_bayar"
-            : "menunggu_konfirmasi",
+        bank_account_id: null,
+        bukti_bayar_url: null,
+        status_pembayaran: metodeBayar === "tunai" ? "belum_bayar" : "menunggu_konfirmasi",
         catatan: catatan || null,
         total_modal: totalModal,
         total_jual: totalJual,
@@ -329,8 +297,6 @@ export default function OrderPage() {
       setCatatan("");
       setGuestNama("");
       setGuestNoHp("");
-      setSelectedBankId("");
-      setBuktiFile(null);
       setMetodeAmbil("ambil_sendiri");
       setLokasiLat(null);
       setLokasiLng(null);
@@ -354,8 +320,6 @@ export default function OrderPage() {
     }
     return activeCategory ? products.filter((p) => p.category_id === activeCategory) : products;
   }, [products, activeCategory, searchQuery, isSearching]);
-
-  const selectedBank = bankAccounts.find((b) => b.id === selectedBankId);
 
   if (loading) {
     return (
@@ -673,11 +637,11 @@ export default function OrderPage() {
 
                 <div className="mb-4">
                   <label className="text-sm font-medium block mb-1.5">Metode Pembayaran</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setMetodeBayar("tunai")}
-                      className={`rounded-xl py-2.5 text-sm font-medium border ${
+                      className={`rounded-xl py-3 text-sm font-medium border ${
                         metodeBayar === "tunai"
                           ? "bg-brand text-white border-brand"
                           : "border-line text-ink-soft"
@@ -687,68 +651,21 @@ export default function OrderPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setMetodeBayar("transfer")}
-                      className={`rounded-xl py-2.5 text-sm font-medium border ${
-                        metodeBayar === "transfer"
-                          ? "bg-brand text-white border-brand"
-                          : "border-line text-ink-soft"
-                      }`}
-                    >
-                      Transfer
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setMetodeBayar("doku")}
-                      className={`rounded-xl py-2.5 text-sm font-medium border ${
+                      className={`rounded-xl py-3 text-sm font-medium border ${
                         metodeBayar === "doku"
                           ? "bg-brand text-white border-brand"
                           : "border-line text-ink-soft"
                       }`}
                     >
-                      Bayar Online
+                      Transfer / QRIS / E-Wallet
                     </button>
                   </div>
                   {metodeBayar === "doku" && (
                     <p className="text-xs text-ink-soft mt-2">
-                      Kamu akan diarahkan ke halaman pembayaran (VA, QRIS, e-wallet, dll), pesanan
-                      otomatis lunas begitu pembayaran berhasil.
+                      Kamu akan diarahkan ke halaman pembayaran untuk memilih Virtual Account, QRIS,
+                      atau e-wallet. Pesanan otomatis lunas begitu pembayaran berhasil.
                     </p>
-                  )}
-
-                  {metodeBayar === "transfer" && (
-                    <div className="mt-3 space-y-3">
-                      <select
-                        value={selectedBankId}
-                        onChange={(e) => setSelectedBankId(e.target.value)}
-                        className="border border-line rounded-xl w-full px-3 py-2.5 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-brand"
-                      >
-                        <option value="">Pilih bank tujuan</option>
-                        {bankAccounts.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.nama_bank} - {b.no_rekening}
-                          </option>
-                        ))}
-                      </select>
-
-                      {selectedBank && (
-                        <div className="bg-bg border border-line rounded-xl p-3 text-sm">
-                          <div className="font-medium">{selectedBank.nama_bank}</div>
-                          <div className="font-mono">{selectedBank.no_rekening}</div>
-                          <div className="text-ink-soft text-xs">a.n {selectedBank.atas_nama}</div>
-                        </div>
-                      )}
-
-                      <label className="flex items-center gap-2 border border-dashed border-line rounded-xl px-3 py-3 text-sm text-ink-soft cursor-pointer">
-                        <UploadCloud size={16} />
-                        {buktiFile ? buktiFile.name : "Upload bukti transfer"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setBuktiFile(e.target.files?.[0] ?? null)}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
                   )}
                 </div>
 
