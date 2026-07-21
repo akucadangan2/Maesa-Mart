@@ -96,3 +96,60 @@ export async function createDokuPayment(orderId: string): Promise<string> {
 
   return data.response.payment.url as string;
 }
+
+export async function checkDokuStatus(invoiceNumber: string) {
+  const requestId = crypto.randomUUID();
+  const timestamp = isoTimestampNoMillis();
+  const target = `/orders/v1/status/${invoiceNumber}`;
+
+  // Method GET gak perlu Digest, beda dari waktu bikin pembayaran (POST)
+  const componentSignature =
+    `Client-Id:${DOKU_CLIENT_ID}\n` +
+    `Request-Id:${requestId}\n` +
+    `Request-Timestamp:${timestamp}\n` +
+    `Request-Target:${target}`;
+
+  const hmac = crypto.createHmac("sha256", DOKU_SECRET_KEY).update(componentSignature).digest("base64");
+  const signature = `HMACSHA256=${hmac}`;
+
+  const res = await fetch(`${DOKU_BASE_URL}${target}`, {
+    method: "GET",
+    headers: {
+      "Client-Id": DOKU_CLIENT_ID,
+      "Request-Id": requestId,
+      "Request-Timestamp": timestamp,
+      Signature: signature,
+    },
+  });
+
+  return res.json();
+}
+
+export async function syncDokuPaymentStatus(orderId: string): Promise<{ status: string; updated: boolean }> {
+  const supabase = createServiceRoleClient();
+
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("id, nomor_order, status_pembayaran")
+    .eq("id", orderId)
+    .single();
+
+  if (error || !order) throw new Error("Pesanan tidak ditemukan.");
+
+  const result = await checkDokuStatus(order.nomor_order);
+  const transactionStatus = result?.transaction?.status ?? "UNKNOWN";
+
+  await supabase
+    .from("doku_transactions")
+    .update({ status: transactionStatus, raw_response: result })
+    .eq("order_id", orderId);
+
+  let updated = false;
+
+  if (transactionStatus === "SUCCESS" && order.status_pembayaran !== "lunas") {
+    await supabase.from("orders").update({ status_pembayaran: "lunas" }).eq("id", orderId);
+    updated = true;
+  }
+
+  return { status: transactionStatus, updated };
+}
