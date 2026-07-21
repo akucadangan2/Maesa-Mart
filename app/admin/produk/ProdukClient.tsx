@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Category, Product, ProductUnit } from "@/lib/types";
 import {
   createProduct,
@@ -36,6 +37,7 @@ export default function ProdukClient({
   initialProducts: Product[];
   categories: Category[];
 }) {
+  const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -120,7 +122,18 @@ export default function ProdukClient({
   function handleDelete(product: Product) {
     if (!confirm(`Hapus produk "${product.nama}"?`)) return;
     setIsPending(true);
-    deleteProduct(product.id).finally(() => setIsPending(false));
+    deleteProduct(product.id)
+      .then(() => {
+        router.refresh();
+      })
+      .catch((err) => {
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Gagal menghapus produk. Kalau produk ini udah pernah dipakai di transaksi/pembelian, coba nonaktifkan aja lewat Edit > hilangkan centang 'Tampilkan di katalog'."
+        );
+      })
+      .finally(() => setIsPending(false));
   }
 
   async function handleAddUnit() {
