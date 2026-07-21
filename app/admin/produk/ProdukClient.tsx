@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Category, Product, ProductUnit } from "@/lib/types";
 import {
   createProduct,
@@ -33,11 +34,21 @@ function parseRibuan(value: string) {
 export default function ProdukClient({
   initialProducts,
   categories,
+  totalCount,
+  pageSize,
+  currentPage,
+  currentQuery,
 }: {
   initialProducts: Product[];
   categories: Category[];
+  totalCount: number;
+  pageSize: number;
+  currentPage: number;
+  currentQuery: string;
 }) {
   const router = useRouter();
+
+  const [searchInput, setSearchInput] = useState(currentQuery);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -61,6 +72,24 @@ export default function ProdukClient({
 
   const isCustomSatuan = unitSatuanPreset === "lainnya";
   const finalSatuanValue = isCustomSatuan ? unitSatuanCustom : unitSatuanPreset;
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchInput !== currentQuery) {
+        navigate({ page: 1, q: searchInput });
+      }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  function navigate(opts: { page: number; q: string; size?: number }) {
+    const sp = new URLSearchParams();
+    sp.set("page", String(opts.page));
+    sp.set("size", String(opts.size ?? pageSize));
+    if (opts.q) sp.set("q", opts.q);
+    router.push(`/admin/produk?${sp.toString()}`);
+  }
 
   function resetUnitForm() {
     setUnitSatuanPreset(PRESET_SATUAN[0]);
@@ -114,6 +143,7 @@ export default function ProdukClient({
       }
       setFormOpen(false);
       setEditing(null);
+      router.refresh();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Terjadi kesalahan");
     }
@@ -175,6 +205,8 @@ export default function ProdukClient({
     }
   }
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -182,6 +214,27 @@ export default function ProdukClient({
         <button onClick={openTambah} className="bg-brand text-white rounded-lg px-4 py-2 text-sm">
           + Tambah Produk
         </button>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Cari nama produk / kode barcode..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
+          />
+        </div>
+        <select
+          value={pageSize}
+          onChange={(e) => navigate({ page: 1, q: currentQuery, size: Number(e.target.value) })}
+          className="border border-gray-200 rounded-lg px-2 text-sm bg-white"
+        >
+          <option value={10}>10 / halaman</option>
+          <option value={20}>20 / halaman</option>
+          <option value={50}>50 / halaman</option>
+        </select>
       </div>
 
       <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
@@ -200,58 +253,88 @@ export default function ProdukClient({
           </tr>
         </thead>
         <tbody>
-          {initialProducts.map((p) => (
-            <tr key={p.id} className="border-t">
-              <td className="p-3">
-                {p.foto_url ? (
-                  <img src={p.foto_url} alt={p.nama} className="w-12 h-12 object-cover rounded" />
-                ) : (
-                  <div className="w-12 h-12 bg-gray-100 rounded" />
-                )}
-              </td>
-              <td className="p-3">{p.nama}</td>
-              <td className="p-3 font-mono text-xs text-gray-500">{p.kode_barcode ?? "-"}</td>
-              <td className="p-3">{categories.find((c) => c.id === p.category_id)?.nama ?? "-"}</td>
-              <td className="p-3">Rp{p.harga_modal.toLocaleString("id-ID")}</td>
-              <td className="p-3">
-                Rp{p.harga_jual.toLocaleString("id-ID")}
-                {p.diskon_persen > 0 && (
-                  <div className="text-xs text-brand">
-                    jadi Rp{hargaEfektif(p).toLocaleString("id-ID")}
-                  </div>
-                )}
-              </td>
-              <td className="p-3">
-                {p.diskon_persen > 0 ? (
-                  <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700">
-                    -{p.diskon_persen}%
-                  </span>
-                ) : (
-                  <span className="text-xs text-gray-400">-</span>
-                )}
-              </td>
-              <td className="p-3">{p.stok}</td>
-              <td className="p-3">
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    p.is_aktif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {p.is_aktif ? "Aktif" : "Nonaktif"}
-                </span>
-              </td>
-              <td className="p-3 space-x-2">
-                <button onClick={() => openEdit(p)} className="text-brand text-xs">
-                  Edit
-                </button>
-                <button onClick={() => handleDelete(p)} disabled={isPending} className="text-red-500 text-xs">
-                  Hapus
-                </button>
+          {initialProducts.length === 0 ? (
+            <tr>
+              <td colSpan={10} className="p-4 text-center text-gray-400 italic">
+                {currentQuery ? `Gak ada produk yang cocok dengan "${currentQuery}".` : "Belum ada produk."}
               </td>
             </tr>
-          ))}
+          ) : (
+            initialProducts.map((p) => (
+              <tr key={p.id} className="border-t">
+                <td className="p-3">
+                  {p.foto_url ? (
+                    <img src={p.foto_url} alt={p.nama} className="w-12 h-12 object-cover rounded" />
+                  ) : (
+                    <div className="w-12 h-12 bg-gray-100 rounded" />
+                  )}
+                </td>
+                <td className="p-3">{p.nama}</td>
+                <td className="p-3 font-mono text-xs text-gray-500">{p.kode_barcode ?? "-"}</td>
+                <td className="p-3">{categories.find((c) => c.id === p.category_id)?.nama ?? "-"}</td>
+                <td className="p-3">Rp{p.harga_modal.toLocaleString("id-ID")}</td>
+                <td className="p-3">
+                  Rp{p.harga_jual.toLocaleString("id-ID")}
+                  {p.diskon_persen > 0 && (
+                    <div className="text-xs text-brand">
+                      jadi Rp{hargaEfektif(p).toLocaleString("id-ID")}
+                    </div>
+                  )}
+                </td>
+                <td className="p-3">
+                  {p.diskon_persen > 0 ? (
+                    <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700">
+                      -{p.diskon_persen}%
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="p-3">{p.stok}</td>
+                <td className="p-3">
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full ${
+                      p.is_aktif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {p.is_aktif ? "Aktif" : "Nonaktif"}
+                  </span>
+                </td>
+                <td className="p-3 space-x-2">
+                  <button onClick={() => openEdit(p)} className="text-brand text-xs">
+                    Edit
+                  </button>
+                  <button onClick={() => handleDelete(p)} disabled={isPending} className="text-red-500 text-xs">
+                    Hapus
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <button
+            disabled={currentPage <= 1}
+            onClick={() => navigate({ page: currentPage - 1, q: currentQuery })}
+            className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border disabled:opacity-40"
+          >
+            <ChevronLeft size={14} /> Sebelumnya
+          </button>
+          <span className="text-sm text-gray-500">
+            Halaman {currentPage} dari {totalPages} ({totalCount} produk)
+          </span>
+          <button
+            disabled={currentPage >= totalPages}
+            onClick={() => navigate({ page: currentPage + 1, q: currentQuery })}
+            className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border disabled:opacity-40"
+          >
+            Berikutnya <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
 
       {formOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
