@@ -305,6 +305,9 @@ export default function TransaksiClient({
                   <span className={`hidden sm:inline text-xs px-2 py-1 rounded-full ${badgePesanan[order.status_pesanan]}`}>
                     {labelPesanan[order.status_pesanan]}
                   </span>
+                  <span className={`text-xs px-2 py-1 rounded-full ${badgePembayaran[order.status_pembayaran]}`}>
+                    {labelPembayaran[order.status_pembayaran]}
+                  </span>
                   <span className="font-semibold text-sm">
                     Rp{order.total_jual.toLocaleString("id-ID")}
                   </span>
@@ -322,7 +325,7 @@ export default function TransaksiClient({
 
                   {detail && (
                     <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2 sm:hidden">
+                      <div className="flex flex-wrap gap-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${badgePesanan[detail.status_pesanan]}`}>
                           {labelPesanan[detail.status_pesanan]}
                         </span>
