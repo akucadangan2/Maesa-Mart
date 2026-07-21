@@ -3,10 +3,32 @@
 // Mobile: tetap download PNG kayak sebelumnya, karena mobile gak bisa diarahkan
 // ke printer fisik langsung dari browser.
 
+const STORE_NAME = "MAESA MART";
+const STORE_ADDRESS_LINE1 = "Jl. Trans Sulawesi Desa Mokupa Jaga 6";
+const STORE_ADDRESS_LINE2 = "Kec. Tombariri Kab. Minahasa";
+const STORE_PHONE = "085255572001";
+
+const STRUK_WIDTH_KEY = "maesa_struk_lebar_mm";
+const DEFAULT_WIDTH_MM = 58;
+
+export function getStrukWidthMm(): number {
+  if (typeof window === "undefined") return DEFAULT_WIDTH_MM;
+  const saved = window.localStorage.getItem(STRUK_WIDTH_KEY);
+  const parsed = Number(saved);
+  return parsed > 0 ? parsed : DEFAULT_WIDTH_MM;
+}
+
+export function setStrukWidthMm(mm: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STRUK_WIDTH_KEY, String(mm));
+}
+
 interface StrukItem {
   nama: string;
   qty: number;
   subtotal: number;
+  satuan?: string;
+  harga_satuan?: number;
 }
 
 interface StrukOrder {
@@ -16,14 +38,11 @@ interface StrukOrder {
   status_pesanan: string;
   total_jual: number;
   items: StrukItem[];
+  kasir_nama?: string | null;
+  nama_pembeli?: string | null;
+  detail_bayar?: string | null;
+  no_referensi?: string | null;
 }
-
-const labelPesanan: Record<string, string> = {
-  menunggu_validasi: "Menunggu Validasi",
-  diproses: "Diproses",
-  selesai: "Selesai",
-  dibatalkan: "Dibatalkan",
-};
 
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
@@ -38,41 +57,42 @@ function escapeHtml(text: string) {
     .replace(/"/g, "&quot;");
 }
 
-let cachedLogoDataUrl: string | null | undefined;
-
-async function getLogoDataUrl(): Promise<string | null> {
-  if (cachedLogoDataUrl !== undefined) return cachedLogoDataUrl;
-  try {
-    const res = await fetch("/866x288.png");
-    const blob = await res.blob();
-    cachedLogoDataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error("Gagal baca logo"));
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    cachedLogoDataUrl = null;
-  }
-  return cachedLogoDataUrl;
+function angka(n: number) {
+  return Math.round(n).toLocaleString("id-ID");
 }
 
-async function buildStrukHtml(order: StrukOrder) {
-  const logoDataUrl = await getLogoDataUrl();
+function labelMetodeBayar(order: StrukOrder) {
+  if (order.detail_bayar && order.detail_bayar.trim()) return order.detail_bayar.trim();
+  const map: Record<string, string> = {
+    tunai: "Tunai",
+    kartu: "Kartu",
+    transfer: "Transfer",
+    ewallet: "E-Wallet",
+    doku: "Online",
+  };
+  return map[order.metode_bayar] ?? order.metode_bayar;
+}
+
+async function buildStrukHtml(order: StrukOrder, widthMm: number) {
+  const contentWidthMm = Math.max(30, widthMm - 6);
+  const tgl = new Date(order.created_at);
+  const tanggalStr = tgl.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const jamStr = tgl.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   const itemsHtml = order.items
-    .map(
-      (item) => `
-        <tr>
-          <td>${escapeHtml(item.nama)} x${item.qty}</td>
-          <td style="text-align:right;white-space:nowrap;">Rp${item.subtotal.toLocaleString("id-ID")}</td>
-        </tr>`
-    )
+    .map((item) => {
+      const satuanTxt = item.satuan ? ` ${escapeHtml(item.satuan)}` : "";
+      const hargaTxt = item.harga_satuan != null ? angka(item.harga_satuan) : "";
+      return `
+        <div style="margin-bottom:3px;">
+          <div>${escapeHtml(item.nama)}</div>
+          <div style="display:flex; justify-content:space-between;">
+            <span>${item.qty}${satuanTxt}${hargaTxt ? "   " + hargaTxt : ""}</span>
+            <span>${angka(item.subtotal)}</span>
+          </div>
+        </div>`;
+    })
     .join("");
-
-  const logoHtml = logoDataUrl
-    ? `<img src="${logoDataUrl}" style="max-width:100%;height:auto;margin-bottom:6px;" />`
-    : `<div style="font-weight:bold;font-size:16px;">Maesa Mart</div>`;
 
   return `<!DOCTYPE html>
 <html>
@@ -80,43 +100,38 @@ async function buildStrukHtml(order: StrukOrder) {
   <meta charset="utf-8" />
   <title>Struk ${escapeHtml(order.nomor_order)}</title>
   <style>
-    @page { size: 58mm auto; margin: 3mm; }
+    @page { size: ${widthMm}mm auto; margin: 3mm; }
     * { box-sizing: border-box; }
     body {
       font-family: 'Courier New', Courier, monospace;
       font-size: 11px;
-      width: 52mm;
+      width: ${contentWidthMm}mm;
       margin: 0;
       padding: 0;
       color: #000;
     }
     .center { text-align: center; }
-    table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-    td { padding: 2px 0; vertical-align: top; }
-    hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
-    .total-row td { font-weight: bold; font-size: 13px; padding-top: 4px; }
-    .meta { font-size: 10px; }
+    .row { display: flex; justify-content: space-between; }
+    hr { border: none; border-top: 1px dashed #000; margin: 5px 0; }
   </style>
 </head>
 <body>
-  <div class="center">${logoHtml}</div>
-  <div class="meta">
-    ${escapeHtml(order.nomor_order)}<br/>
-    ${new Date(order.created_at).toLocaleString("id-ID")}
-  </div>
+  <div class="center" style="font-weight:bold;">${STORE_NAME}</div>
+  <div class="center">${STORE_ADDRESS_LINE1}</div>
+  <div class="center">${STORE_ADDRESS_LINE2}</div>
+  <div class="center">${STORE_PHONE}</div>
   <hr/>
-  <table>${itemsHtml}</table>
+  <div>No. &nbsp;&nbsp;&nbsp;: ${escapeHtml(order.nomor_order)}</div>
+  <div class="row"><span>Kasir &nbsp;: ${escapeHtml(order.kasir_nama ?? "-")}</span><span>${tanggalStr}</span></div>
+  <div class="row"><span>Pel. &nbsp;&nbsp;: ${escapeHtml(order.nama_pembeli ?? "Umum")}</span><span>${jamStr}</span></div>
   <hr/>
-  <table>
-    <tr class="total-row">
-      <td>Total</td>
-      <td style="text-align:right;">Rp${order.total_jual.toLocaleString("id-ID")}</td>
-    </tr>
-  </table>
-  <div class="meta">Metode: ${escapeHtml(order.metode_bayar)}</div>
-  <div class="meta">Status: ${escapeHtml(labelPesanan[order.status_pesanan] ?? order.status_pesanan)}</div>
+  ${itemsHtml}
   <hr/>
-  <div class="center">Terima kasih sudah belanja di Maesa Mart</div>
+  <div class="row" style="font-weight:bold;"><span>Total</span><span>${angka(order.total_jual)}</span></div>
+  <div class="row"><span>Metode bayar:</span><span>${escapeHtml(labelMetodeBayar(order))}</span></div>
+  <div class="row"><span>No. Referensi:</span><span>${escapeHtml(order.no_referensi ?? "")}</span></div>
+  <hr/>
+  <div class="center">Terimakasih atas kunjunganya</div>
 </body>
 </html>`;
 }
@@ -153,7 +168,6 @@ function printHtmlViaIframe(html: string) {
     win.onafterprint = cleanup;
   }
 
-  // Fallback kalau event onafterprint gak kepanggil (beberapa browser gak konsisten)
   setTimeout(cleanup, 8000);
 
   setTimeout(() => {
@@ -162,26 +176,14 @@ function printHtmlViaIframe(html: string) {
   }, 300);
 }
 
-// ===== Fungsi untuk struk PNG (dipakai khusus mobile) =====
-function drawDashedLine(ctx: CanvasRenderingContext2D, y: number, width: number, padding: number) {
-  ctx.save();
-  ctx.strokeStyle = "#DCE3D8";
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(padding, y);
-  ctx.lineTo(width - padding, y);
-  ctx.stroke();
-  ctx.restore();
-}
-
 async function downloadStrukPng(order: StrukOrder) {
   const width = 400;
   const padding = 24;
-  const lineHeight = 20;
-  const headerHeight = 90;
-  const itemsHeight = order.items.length * lineHeight;
-  const footerHeight = 140;
-  const height = headerHeight + itemsHeight + footerHeight;
+  const lineHeight = 16;
+  const itemBlockHeight = order.items.length * (lineHeight * 2 + 4);
+  const headerHeight = 110;
+  const footerHeight = 130;
+  const height = headerHeight + itemBlockHeight + footerHeight;
 
   const canvas = document.createElement("canvas");
   const scale = 2;
@@ -193,69 +195,90 @@ async function downloadStrukPng(order: StrukOrder) {
 
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, width, height);
-
-  const logo = new Image();
-  logo.src = "/866x288.png";
-  await new Promise((resolve) => {
-    logo.onload = resolve;
-    logo.onerror = resolve;
-  });
-
-  let y = 20;
-
-  if (logo.complete && logo.naturalWidth > 0) {
-    const logoW = 160;
-    const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW;
-    ctx.drawImage(logo, (width - logoW) / 2, y, logoW, logoH);
-    y += logoH + 14;
-  } else {
-    ctx.fillStyle = "#1E56A0";
-    ctx.font = "bold 18px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Maesa Mart", width / 2, y + 18);
-    y += 36;
-  }
-
-  ctx.font = "12px 'Courier New', monospace";
   ctx.fillStyle = "#1B2420";
-  ctx.textAlign = "left";
-  ctx.fillText(order.nomor_order, padding, y);
-  ctx.textAlign = "right";
-  ctx.fillText(new Date(order.created_at).toLocaleString("id-ID"), width - padding, y);
+
+  let y = 24;
+  ctx.textAlign = "center";
+  ctx.font = "bold 14px 'Courier New', monospace";
+  ctx.fillText(STORE_NAME, width / 2, y);
+  y += 16;
+  ctx.font = "11px 'Courier New', monospace";
+  ctx.fillText(STORE_ADDRESS_LINE1, width / 2, y);
+  y += 14;
+  ctx.fillText(STORE_ADDRESS_LINE2, width / 2, y);
+  y += 14;
+  ctx.fillText(STORE_PHONE, width / 2, y);
   y += 18;
 
-  drawDashedLine(ctx, y, width, padding);
-  y += 20;
+  const tgl = new Date(order.created_at);
+  const tanggalStr = tgl.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const jamStr = tgl.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  ctx.font = "12px 'Courier New', monospace";
+  ctx.textAlign = "left";
+  ctx.fillText(`No.   : ${order.nomor_order}`, padding, y);
+  y += lineHeight;
+  ctx.fillText(`Kasir : ${order.kasir_nama ?? "-"}`, padding, y);
+  ctx.textAlign = "right";
+  ctx.fillText(tanggalStr, width - padding, y);
+  y += lineHeight;
+  ctx.textAlign = "left";
+  ctx.fillText(`Pel.  : ${order.nama_pembeli ?? "Umum"}`, padding, y);
+  ctx.textAlign = "right";
+  ctx.fillText(jamStr, width - padding, y);
+  y += 10;
+
+  ctx.strokeStyle = "#999";
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(padding, y);
+  ctx.lineTo(width - padding, y);
+  ctx.stroke();
+  y += 16;
+
+  ctx.setLineDash([]);
   for (const item of order.items) {
     ctx.textAlign = "left";
-    ctx.fillText(`${item.nama} x${item.qty}`, padding, y);
-    ctx.textAlign = "right";
-    ctx.fillText(`Rp${item.subtotal.toLocaleString("id-ID")}`, width - padding, y);
+    ctx.fillText(item.nama, padding, y);
     y += lineHeight;
+    const satuanTxt = item.satuan ? ` ${item.satuan}` : "";
+    const hargaTxt = item.harga_satuan != null ? `   ${angka(item.harga_satuan)}` : "";
+    ctx.fillText(`${item.qty}${satuanTxt}${hargaTxt}`, padding, y);
+    ctx.textAlign = "right";
+    ctx.fillText(angka(item.subtotal), width - padding, y);
+    y += lineHeight + 4;
   }
 
-  drawDashedLine(ctx, y, width, padding);
-  y += 22;
+  ctx.strokeStyle = "#999";
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(padding, y);
+  ctx.lineTo(width - padding, y);
+  ctx.stroke();
+  y += 18;
 
-  ctx.font = "bold 14px 'Courier New', monospace";
+  ctx.setLineDash([]);
+  ctx.font = "bold 12px 'Courier New', monospace";
   ctx.textAlign = "left";
   ctx.fillText("Total", padding, y);
   ctx.textAlign = "right";
-  ctx.fillText(`Rp${order.total_jual.toLocaleString("id-ID")}`, width - padding, y);
-  y += 26;
+  ctx.fillText(angka(order.total_jual), width - padding, y);
+  y += lineHeight + 4;
 
   ctx.font = "11px 'Courier New', monospace";
-  ctx.fillStyle = "#5B6660";
   ctx.textAlign = "left";
-  ctx.fillText(`Metode: ${order.metode_bayar}`, padding, y);
-  y += 16;
-  ctx.fillText(`Status: ${labelPesanan[order.status_pesanan] ?? order.status_pesanan}`, padding, y);
-  y += 32;
+  ctx.fillText("Metode bayar:", padding, y);
+  ctx.textAlign = "right";
+  ctx.fillText(labelMetodeBayar(order), width - padding, y);
+  y += lineHeight;
+
+  ctx.textAlign = "left";
+  ctx.fillText("No. Referensi:", padding, y);
+  ctx.textAlign = "right";
+  ctx.fillText(order.no_referensi ?? "", width - padding, y);
+  y += 20;
 
   ctx.textAlign = "center";
-  ctx.fillText("Terima kasih sudah belanja di Maesa Mart", width / 2, y);
+  ctx.fillText("Terimakasih atas kunjunganya", width / 2, y);
 
   const dataUrl = canvas.toDataURL("image/png");
   const a = document.createElement("a");
@@ -266,9 +289,9 @@ async function downloadStrukPng(order: StrukOrder) {
 
 /**
  * Dipakai di semua tempat (kasir, riwayat, akun) sama seperti sebelumnya, nama &
- * signature-nya gak berubah jadi gak perlu ubah kode yang manggil fungsi ini.
- * Desktop -> buka dialog print browser otomatis (siap kirim ke printer struk).
- * Mobile -> tetap download PNG.
+ * signature-nya gak berubah jadi gak perlu ubah kode yang manggil fungsi ini,
+ * cuma sekarang menerima beberapa field opsional tambahan (kasir_nama,
+ * nama_pembeli, detail_bayar, no_referensi).
  */
 export async function downloadStruk(order: StrukOrder) {
   if (isMobileDevice()) {
@@ -276,6 +299,7 @@ export async function downloadStruk(order: StrukOrder) {
     return;
   }
 
-  const html = await buildStrukHtml(order);
+  const widthMm = getStrukWidthMm();
+  const html = await buildStrukHtml(order, widthMm);
   printHtmlViaIframe(html);
 }
