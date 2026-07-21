@@ -461,23 +461,26 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           </div>
         </div>
 
-        <div className="shrink-0 flex gap-2 mb-3">
-          <input
-            type="number"
-            min={1}
-            value={jumlahScan}
-            onChange={(e) => setJumlahScan(e.target.value)}
-            className="w-16 shrink-0 rounded-xl border text-sm bg-white text-center px-2 py-3"
-            title="Jumlah per scan"
-          />
+        <div className="shrink-0 flex gap-2 mb-3 items-end">
+          <div className="w-20 shrink-0">
+            <label className="text-xs font-medium text-gray-600 block mb-1">Jumlah*</label>
+            <input
+              type="number"
+              min={1}
+              value={jumlahScan}
+              onChange={(e) => setJumlahScan(e.target.value)}
+              className="w-full rounded-xl border text-sm bg-white text-center px-2 py-3"
+            />
+          </div>
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <label className="text-xs font-medium text-gray-600 block mb-1">Kode Barcode*</label>
+            <Search size={16} className="absolute left-3 top-[calc(50%+10px)] -translate-y-1/2 text-gray-400" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Scan barcode atau ketik nama produk..."
+              placeholder="Kode barcode / nama produk..."
               className="w-full pl-9 pr-3 py-3 rounded-xl border text-sm bg-white"
             />
             {results.length > 0 && (
