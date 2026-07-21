@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { StatusPesanan, StatusPembayaran } from "@/lib/types";
 import { updateStatusPesanan, updateStatusPembayaran, getOrderDetail } from "./actions";
+import { syncDokuPaymentStatus } from "@/app/order/doku-actions";
 
 interface OrderListRow {
   id: string;
@@ -89,6 +90,7 @@ export default function TransaksiClient({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, OrderDetail>>({});
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
+  const [syncingDokuId, setSyncingDokuId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -150,6 +152,26 @@ export default function TransaksiClient({
       await updateStatusPembayaran(id, status);
       router.refresh();
     });
+  }
+
+  async function handleSyncDoku(id: string) {
+    setSyncingDokuId(id);
+    try {
+      const result = await syncDokuPaymentStatus(id);
+      if (result.updated) {
+        setDetailCache((prev) => {
+          if (!prev[id]) return prev;
+          return { ...prev, [id]: { ...prev[id], status_pembayaran: "lunas" } };
+        });
+        router.refresh();
+      } else {
+        alert(`Status di DOKU: ${result.status}. Belum berubah jadi lunas.`);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal cek status DOKU");
+    } finally {
+      setSyncingDokuId(null);
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -345,6 +367,15 @@ export default function TransaksiClient({
                             className="border border-red-300 text-red-600 text-xs px-3 py-1.5 rounded-lg"
                           >
                             Batalkan
+                          </button>
+                        )}
+                        {detail.metode_bayar === "doku" && detail.status_pembayaran !== "lunas" && (
+                          <button
+                            disabled={syncingDokuId === order.id}
+                            onClick={() => handleSyncDoku(order.id)}
+                            className="border border-brand text-brand text-xs px-3 py-1.5 rounded-lg disabled:opacity-50"
+                          >
+                            {syncingDokuId === order.id ? "Mengecek..." : "Cek Status DOKU"}
                           </button>
                         )}
                         {detail.status_pembayaran !== "lunas" && (
