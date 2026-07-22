@@ -7,27 +7,28 @@ import {
   Minus,
   Plus,
   Trash2,
-  Printer,
   History,
   Package,
   Pause,
-  ListChecks,
-  X,
-  Loader2,
-  Phone,
   Image as ImageIcon,
+  WifiOff,
+  Settings,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { downloadStruk } from "@/lib/strukGenerator";
 import {
-  searchKasirItems,
-  createPosSale,
-  getRiwayatKasirHariIni,
   getOnlineOrdersRingkas,
   getOnlineOrderDetail,
   type KasirSearchResult,
   type KasirUnitOption,
 } from "./actions";
+import { METODE_BAYAR_OPTIONS } from "./metodeBayar";
+import { useKasirHybrid, getLocalServerUrl, setLocalServerUrlPref } from "./hooks/useKasirHybrid";
+import CheckoutModal from "./components/CheckoutModal";
+import PendingListModal from "./components/PendingListModal";
+import ReceiptModal from "./components/ReceiptModal";
+import RiwayatModal from "./components/RiwayatModal";
+import OnlineOrdersModal from "./components/OnlineOrdersModal";
+import LocalServerSettingsModal from "./components/LocalServerSettingsModal";
 
 interface CartLine {
   product_id: string;
@@ -47,47 +48,12 @@ interface PendingDraft {
   namaPembeli: string;
 }
 
-type KategoriBayar = "tunai" | "kartu" | "transfer" | "ewallet";
-
-interface MetodeBayarOption {
-  id: string;
-  name: string;
-  kategori: KategoriBayar;
-}
-
-const METODE_BAYAR_OPTIONS: MetodeBayarOption[] = [
-  { id: "cash", name: "Tunai", kategori: "tunai" },
-  { id: "debit_card", name: "Kartu Debit", kategori: "kartu" },
-  { id: "credit_card", name: "Kartu Kredit", kategori: "kartu" },
-  { id: "debit_mandiri", name: "Debit Mandiri", kategori: "kartu" },
-  { id: "debit_bri", name: "Debit BRI", kategori: "kartu" },
-  { id: "debit_bsg", name: "Debit BSG", kategori: "kartu" },
-  { id: "debit_bni", name: "Debit BNI", kategori: "kartu" },
-  { id: "ovo", name: "OVO", kategori: "ewallet" },
-  { id: "gopay", name: "Gopay", kategori: "ewallet" },
-  { id: "dana", name: "Dana", kategori: "ewallet" },
-  { id: "qris_mandiri", name: "Qris Mandiri", kategori: "transfer" },
-  { id: "debit_bca", name: "Debit BCA", kategori: "kartu" },
-  { id: "qris_bni", name: "Qris BNI", kategori: "transfer" },
-  { id: "qris_bca", name: "Qris BCA", kategori: "transfer" },
-  { id: "debit_maybank", name: "Debit Maybank", kategori: "kartu" },
-  { id: "shopee_pay", name: "Shopee", kategori: "ewallet" },
-  { id: "all_credit_card", name: "All Kartu Kredit", kategori: "kartu" },
-  { id: "qris_bri", name: "Qris BRI", kategori: "transfer" },
-];
-
 function unitKeyOf(u: KasirUnitOption) {
   return u.product_unit_id ?? "base";
 }
 
 function selectedUnit(line: CartLine): KasirUnitOption {
   return line.units.find((u) => unitKeyOf(u) === line.selectedUnitKey) ?? line.units[0];
-}
-
-function formatRibuan(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  return Number(digits).toLocaleString("id-ID");
 }
 
 function parseRibuan(value: string) {
@@ -109,12 +75,16 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const supabase = createClient();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { modeOffline, cariProdukHybrid, buatPenjualanHybrid, riwayatHybrid } = useKasirHybrid(staffId);
+
   const [draftInvoiceNo] = useState(() => buatNomorInvoiceDraft());
   const todayFormatted = new Date().toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   });
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const [jumlahScan, setJumlahScan] = useState("1");
@@ -133,10 +103,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof createPosSale>> | null>(null);
+  const [receipt, setReceipt] = useState<any>(null);
 
   const [riwayatOpen, setRiwayatOpen] = useState(false);
-  const [riwayat, setRiwayat] = useState<Awaited<ReturnType<typeof getRiwayatKasirHariIni>>>([]);
+  const [riwayat, setRiwayat] = useState<any[]>([]);
 
   const [onlineOpen, setOnlineOpen] = useState(false);
   const [onlinePendingCount, setOnlinePendingCount] = useState(0);
@@ -158,16 +128,23 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   }, []);
 
   useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // Gagal daftarin service worker, gapapa — fitur install/offline-shell
+        // cuma jadi gak aktif, fitur hybrid ke server lokal tetap jalan normal.
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     const seq = ++searchSeq.current;
     const t = setTimeout(async () => {
       if (!query.trim()) {
         setResults([]);
         return;
       }
-      const data = await searchKasirItems(query);
+      const data = await cariProdukHybrid(query);
       if (seq !== searchSeq.current) return;
-      // Hasil cocok cuma 1 (barcode scan biasanya begini), langsung masuk
-      // billing tanpa perlu tekan Enter lagi.
       if (data.length === 1) {
         tambahKeCart(data[0]);
       } else {
@@ -178,8 +155,9 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  // Badge angka pesanan yang perlu validasi, update sendiri real-time
   useEffect(() => {
+    if (modeOffline) return;
+
     async function loadPendingCount() {
       const { count } = await supabase
         .from("orders")
@@ -201,10 +179,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [modeOffline]);
 
   useEffect(() => {
-    if (!onlineOpen) return;
+    if (!onlineOpen || modeOffline) return;
     const channel = supabase
       .channel("kasir-online-orders-modal")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
@@ -216,7 +194,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onlineOpen, onlineFilter]);
+  }, [onlineOpen, onlineFilter, modeOffline]);
 
   function tambahKeCart(item: KasirSearchResult) {
     // Selalu default ke satuan eceran pas scan, biar konsisten. Kalau
@@ -315,6 +293,14 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     setPendingList((prev) => prev.filter((d) => d.id !== id));
   }
 
+  function tutupCheckout() {
+    setCheckoutOpen(false);
+    setUangDiterima("");
+    setDiskonManual("");
+    setNoReferensi("");
+    setMetodeBayarId("cash");
+  }
+
   async function handleSelesaikan() {
     setErrorMsg(null);
 
@@ -329,7 +315,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
     setSubmitting(true);
     try {
-      const result = await createPosSale({
+      const result = await buatPenjualanHybrid({
         kasir_id: staffId,
         metode_bayar: metodeBayarOption.kategori,
         detail_bayar: isTunai ? null : metodeBayarOption.name,
@@ -365,10 +351,14 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
   async function bukaRiwayat() {
     setRiwayatOpen(true);
-    setRiwayat(await getRiwayatKasirHariIni(staffId));
+    setRiwayat(await riwayatHybrid());
   }
 
   async function bukaOnline(filter: "pending" | "semua" = onlineFilter) {
+    if (modeOffline) {
+      alert("Pesanan Online butuh koneksi internet, lagi gak bisa diakses (mode offline).");
+      return;
+    }
     setOnlineOpen(true);
     setOnlineFilter(filter);
     setOnlineLoading(true);
@@ -406,7 +396,15 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   return (
     <main className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       <header className="shrink-0 bg-white border-b px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-        <div className="font-semibold text-sm">Kasir POS</div>
+        <div className="flex items-center gap-2">
+          <div className="font-semibold text-sm">Kasir POS</div>
+          {modeOffline && (
+            <span className="flex items-center gap-1 bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
+              <WifiOff size={12} />
+              Mode Offline
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => bukaOnline()}
@@ -438,6 +436,13 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           >
             <History size={13} />
             <span className="hidden sm:inline">Riwayat</span>
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center gap-1.5 text-xs border rounded-full px-3 py-1.5"
+            title="Alamat Server Lokal"
+          >
+            <Settings size={13} />
           </button>
           <button onClick={handleLogout} className="text-xs text-red-500 border rounded-full px-3 py-1.5">
             Keluar
@@ -646,419 +651,70 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
         )}
       </div>
 
-      {/* Modal Selesaikan Transaksi */}
+      {settingsOpen && (
+        <LocalServerSettingsModal
+          initialUrl={getLocalServerUrl()}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(url) => {
+            setLocalServerUrlPref(url);
+            setSettingsOpen(false);
+          }}
+        />
+      )}
+
       {checkoutOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSelesaikan();
-              }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-lg">Selesaikan Transaksi</h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCheckoutOpen(false);
-                    setUangDiterima("");
-                    setDiskonManual("");
-                    setNoReferensi("");
-                    setMetodeBayarId("cash");
-                  }}
-                  className="text-gray-400"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="bg-brand text-white rounded-xl p-5 text-center mb-4">
-                <div className="text-sm text-white/80 mb-1">Total Bayar</div>
-                <div className="text-4xl font-bold font-mono">
-                  Rp{totalSetelahDiskon.toLocaleString("id-ID")}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="text-xs font-medium block mb-1">Total Harga</label>
-                  <div className="border rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono">
-                    Rp{subtotal.toLocaleString("id-ID")}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium block mb-1">Diskon (Rp)</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={diskonManual}
-                    onChange={(e) => setDiskonManual(formatRibuan(e.target.value))}
-                    placeholder="0"
-                    className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium block mb-1">Kode Pembeli (opsional)</label>
-                  <input
-                    value={kodePembeli}
-                    onChange={(e) => setKodePembeli(e.target.value)}
-                    className="border rounded-lg w-full px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium block mb-1">Nama Pembeli (opsional)</label>
-                  <input
-                    value={namaPembeli}
-                    onChange={(e) => setNamaPembeli(e.target.value)}
-                    className="border rounded-lg w-full px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-
-              <label className="text-xs font-medium block mb-1">Metode Bayar</label>
-              <select
-                value={metodeBayarId}
-                onChange={(e) => setMetodeBayarId(e.target.value)}
-                className="border rounded-lg w-full px-3 py-2.5 text-sm bg-white mb-3"
-              >
-                {METODE_BAYAR_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-
-              {isTunai ? (
-                <div className="mb-3">
-                  <label className="text-xs font-medium block mb-1">Uang Diterima</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={uangDiterima}
-                    onChange={(e) => setUangDiterima(formatRibuan(e.target.value))}
-                    placeholder="0"
-                    className="border rounded-lg w-full px-3 py-3 text-lg font-mono font-semibold"
-                  />
-                  {kembalian !== null && kembalian >= 0 && (
-                    <div className="mt-2 bg-brand/10 rounded-lg p-3 text-center">
-                      <div className="text-xs text-brand/70">Kembalian</div>
-                      <div className="text-2xl font-bold font-mono text-brand">
-                        Rp{kembalian.toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="mb-3">
-                  <label className="text-xs font-medium block mb-1">No Referensi (opsional)</label>
-                  <input
-                    value={noReferensi}
-                    onChange={(e) => setNoReferensi(e.target.value)}
-                    className="border rounded-lg w-full px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
-
-              {errorMsg && <p className="text-red-500 text-xs mb-3">{errorMsg}</p>}
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-brand text-white rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-              >
-                {submitting ? "Memproses..." : "Selesaikan"}
-              </button>
-            </form>
-          </div>
-        </div>
+        <CheckoutModal
+          subtotal={subtotal}
+          totalSetelahDiskon={totalSetelahDiskon}
+          diskonManual={diskonManual}
+          onDiskonChange={setDiskonManual}
+          kodePembeli={kodePembeli}
+          onKodePembeliChange={setKodePembeli}
+          namaPembeli={namaPembeli}
+          onNamaPembeliChange={setNamaPembeli}
+          metodeBayarId={metodeBayarId}
+          onMetodeBayarChange={setMetodeBayarId}
+          isTunai={isTunai}
+          uangDiterima={uangDiterima}
+          onUangDiterimaChange={setUangDiterima}
+          kembalian={kembalian}
+          noReferensi={noReferensi}
+          onNoReferensiChange={setNoReferensi}
+          errorMsg={errorMsg}
+          submitting={submitting}
+          onSubmit={handleSelesaikan}
+          onClose={tutupCheckout}
+        />
       )}
 
-      {/* Modal Daftar Tahan */}
       {pendingListOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Daftar Transaksi Ditahan</h2>
-              <button onClick={() => setPendingListOpen(false)} className="text-gray-400">
-                <X size={18} />
-              </button>
-            </div>
-            {pendingList.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6 flex flex-col items-center gap-2">
-                <ListChecks size={24} className="text-gray-300" />
-                Belum ada transaksi yang ditahan.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {pendingList.map((d) => {
-                  const total = d.cart.reduce(
-                    (sum, line) => sum + selectedUnit(line).harga_jual * line.qty,
-                    0
-                  );
-                  return (
-                    <div key={d.id} className="border rounded-lg p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{d.label}</div>
-                        <div className="text-xs text-gray-500">
-                          {d.cart.length} item · Rp{total.toLocaleString("id-ID")}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => lanjutkanPending(d)}
-                          className="text-xs bg-brand text-white rounded-lg px-3 py-1.5"
-                        >
-                          Lanjutkan
-                        </button>
-                        <button onClick={() => hapusPending(d.id)} className="text-red-500">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        <PendingListModal
+          pendingList={pendingList}
+          onClose={() => setPendingListOpen(false)}
+          onLanjutkan={lanjutkanPending}
+          onHapus={hapusPending}
+        />
       )}
 
-      {receipt && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center">
-            <div className="text-brand text-4xl mb-2">✓</div>
-            <div className="font-semibold text-lg mb-1">Transaksi Selesai</div>
-            <div className="text-sm text-gray-500 mb-1 font-mono">{receipt.nomor_order}</div>
-            <div className="text-2xl font-bold mb-1">
-              Rp{receipt.total_jual.toLocaleString("id-ID")}
-            </div>
-            {receipt.kembalian !== null && receipt.kembalian > 0 && (
-              <div className="text-sm text-brand mb-4">
-                Kembalian: Rp{receipt.kembalian.toLocaleString("id-ID")}
-              </div>
-            )}
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={() =>
-                  downloadStruk({
-                    nomor_order: receipt.nomor_order,
-                    created_at: receipt.created_at,
-                    metode_bayar: receipt.metode_bayar,
-                    status_pesanan: "selesai",
-                    total_jual: receipt.total_jual,
-                    items: receipt.items,
-                    kasir_nama: staffNama,
-                    nama_pembeli: (receipt as any).nama_pembeli,
-                    detail_bayar: (receipt as any).detail_bayar,
-                    no_referensi: (receipt as any).no_referensi,
-                  })
-                }
-                className="flex-1 border rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-1.5"
-              >
-                <Printer size={15} />
-                Cetak Struk
-              </button>
-              <button
-                onClick={() => setReceipt(null)}
-                className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-medium"
-              >
-                Transaksi Baru
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {receipt && <ReceiptModal receipt={receipt} staffNama={staffNama} onClose={() => setReceipt(null)} />}
 
       {riwayatOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Riwayat Hari Ini</h2>
-              <button onClick={() => setRiwayatOpen(false)} className="text-gray-400">
-                <X size={18} />
-              </button>
-            </div>
-            {riwayat.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Belum ada transaksi hari ini.</p>
-            ) : (
-              <div className="space-y-2">
-                {riwayat.map((r) => (
-                  <div key={r.id} className="border rounded-lg p-3 flex items-center justify-between">
-                    <div>
-                      <div className="font-mono text-xs">{r.nomor_order}</div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(r.created_at).toLocaleTimeString("id-ID")} · {r.metode_bayar}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-sm">
-                        Rp{r.total_jual.toLocaleString("id-ID")}
-                      </span>
-                      <button
-                        onClick={() =>
-                          downloadStruk({
-                            nomor_order: r.nomor_order,
-                            created_at: r.created_at,
-                            metode_bayar: r.metode_bayar,
-                            status_pesanan: "selesai",
-                            total_jual: r.total_jual,
-                            kasir_nama: staffNama,
-                            nama_pembeli: (r as any).nama_pembeli_pos,
-                            detail_bayar: (r as any).detail_bayar,
-                            no_referensi: (r as any).no_referensi,
-                            items: (r.order_items ?? []).map((it: any) => ({
-                              nama: it.nama_produk_snapshot,
-                              qty: it.qty,
-                              harga_satuan: it.harga_jual_saat_itu,
-                              subtotal: it.subtotal,
-                            })),
-                          })
-                        }
-                        className="text-brand"
-                        aria-label="Cetak ulang struk"
-                      >
-                        <Printer size={15} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <RiwayatModal riwayat={riwayat} staffNama={staffNama} onClose={() => setRiwayatOpen(false)} />
       )}
 
       {onlineOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between p-5 pb-3 shrink-0">
-              <h2 className="font-semibold">Pesanan Online</h2>
-              <button onClick={() => setOnlineOpen(false)} className="text-gray-400">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex gap-2 px-5 pb-3 shrink-0">
-              <button
-                onClick={() => bukaOnline("pending")}
-                className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
-                  onlineFilter === "pending" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
-                }`}
-              >
-                Perlu Validasi {onlinePendingCount > 0 && `(${onlinePendingCount})`}
-              </button>
-              <button
-                onClick={() => bukaOnline("semua")}
-                className={`text-xs px-3 py-1.5 rounded-full border font-medium ${
-                  onlineFilter === "semua" ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-600"
-                }`}
-              >
-                Semua (30 Terbaru)
-              </button>
-            </div>
-
-            <div className="overflow-y-auto px-5 pb-5 flex-1">
-              {onlineLoading ? (
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500 py-10">
-                  <Loader2 size={16} className="animate-spin" />
-                  Memuat...
-                </div>
-              ) : onlineOrders.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-10">
-                  {onlineFilter === "pending" ? "Gak ada pesanan yang perlu divalidasi." : "Belum ada pesanan online."}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {onlineOrders.map((o: any) => {
-                    const isExpanded = expandedOnlineId === o.id;
-                    const detail = onlineDetailCache[o.id] as any;
-                    const isLoadingThis = loadingDetailId === o.id;
-
-                    return (
-                      <div key={o.id} className="border rounded-lg overflow-hidden">
-                        <button
-                          onClick={() => toggleExpandOnline(o.id)}
-                          className="w-full flex items-center justify-between gap-2 p-3 text-left"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-mono text-xs">{o.nomor_order}</div>
-                            <div className="text-xs text-gray-500 truncate">
-                              {o.customers?.nama ?? o.guest_nama ?? "Tamu"} ·{" "}
-                              {new Date(o.created_at).toLocaleString("id-ID", {
-                                day: "2-digit",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="font-semibold text-sm">
-                              Rp{o.total_jual.toLocaleString("id-ID")}
-                            </span>
-                          </div>
-                        </button>
-
-                        <div className="px-3 pb-2 flex gap-1.5">
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full ${
-                              o.status_pembayaran === "lunas"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-yellow-100 text-yellow-700"
-                            }`}
-                          >
-                            {o.status_pembayaran === "lunas" ? "Sudah Bayar" : "Belum/Menunggu Bayar"}
-                          </span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                            {o.status_pesanan.replace("_", " ")}
-                          </span>
-                        </div>
-
-                        {isExpanded && (
-                          <div className="border-t bg-gray-50 p-3 space-y-2">
-                            {isLoadingThis ? (
-                              <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
-                                <Loader2 size={13} className="animate-spin" />
-                                Memuat detail...
-                              </div>
-                            ) : detail ? (
-                              <>
-                                <div className="space-y-1">
-                                  {detail.order_items.map((it: any, i: number) => (
-                                    <div key={i} className="flex justify-between text-xs">
-                                      <span>
-                                        {it.nama_produk_snapshot}{" "}
-                                        <span className="text-gray-400">x{it.qty}</span>
-                                      </span>
-                                      <span className="font-mono">Rp{it.subtotal.toLocaleString("id-ID")}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                                {detail.catatan && (
-                                  <div className="text-xs text-gray-600 pt-1 border-t">
-                                    <span className="text-gray-400">Catatan: </span>
-                                    {detail.catatan}
-                                  </div>
-                                )}
-                                {((detail.customers as any)?.no_hp || detail.guest_no_hp) && (
-                                  <div className="flex items-center gap-1.5 text-xs text-gray-600 pt-1 border-t">
-                                    <Phone size={12} />
-                                    {(detail.customers as any)?.no_hp ?? detail.guest_no_hp}
-                                  </div>
-                                )}
-                              </>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <OnlineOrdersModal
+          onlineFilter={onlineFilter}
+          onFilterChange={(f) => bukaOnline(f)}
+          onlinePendingCount={onlinePendingCount}
+          onlineOrders={onlineOrders}
+          onlineLoading={onlineLoading}
+          expandedOnlineId={expandedOnlineId}
+          onlineDetailCache={onlineDetailCache}
+          loadingDetailId={loadingDetailId}
+          onToggleExpand={toggleExpandOnline}
+          onClose={() => setOnlineOpen(false)}
+        />
       )}
     </main>
   );

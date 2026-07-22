@@ -1,0 +1,12 @@
+{
+  "name": "Maesa Mart Kasir",
+  "short_name": "Kasir",
+  "description": "Aplikasi Kasir POS Maesa Mart",
+  "start_url": "/kasir",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1E56A0",
+  "icons": [
+    { "src": "/866x288.png", "sizes": "866x288", "type": "image/png" }
+  ]
+}
