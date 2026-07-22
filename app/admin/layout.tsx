@@ -68,6 +68,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { href: "/admin/qr", label: "Link & QR Toko", superAdminOnly: true },
       { href: "/admin/pengguna", label: "Data User", superAdminOnly: true },
+      { href: "/admin/pengaturan-toko", label: "Pengaturan Toko", superAdminOnly: true },
     ],
   },
 ];
