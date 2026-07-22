@@ -1,7 +1,18 @@
-import { getProductsForHarga } from "./actions";
+import { getProductsForHarga, getHargaProdukStatusCounts } from "./actions";
 import HargaProdukClient from "./HargaProdukClient";
 
-export default async function HargaProdukPage() {
-  const products = await getProductsForHarga();
-  return <HargaProdukClient initialProducts={products} />;
+export default async function HargaProdukPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const params = await searchParams;
+  const status = params.status ?? "aktif";
+
+  const [products, statusCounts] = await Promise.all([
+    getProductsForHarga(status),
+    getHargaProdukStatusCounts(),
+  ]);
+
+  return <HargaProdukClient initialProducts={products} currentStatus={status} statusCounts={statusCounts} />;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { updateHargaProduk } from "./actions";
 
 interface ProductRow {
@@ -12,13 +13,33 @@ interface ProductRow {
   harga_jual: number;
   diskon_persen: number;
   stok: number;
+  is_aktif: boolean;
 }
 
-export default function HargaProdukClient({ initialProducts }: { initialProducts: ProductRow[] }) {
+const STATUS_TABS = [
+  { key: "aktif", label: "Aktif" },
+  { key: "arsip", label: "Arsip" },
+  { key: "semua", label: "Semua" },
+];
+
+export default function HargaProdukClient({
+  initialProducts,
+  currentStatus,
+  statusCounts,
+}: {
+  initialProducts: ProductRow[];
+  currentStatus: string;
+  statusCounts: { aktif: number; arsip: number; semua: number };
+}) {
+  const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ harga_modal: 0, harga_jual: 0, diskon_persen: 0, stok: 0 });
   const [products, setProducts] = useState(initialProducts);
   const [saving, setSaving] = useState(false);
+
+  function navigate(status: string) {
+    router.push(`/admin/harga-produk?status=${status}`);
+  }
 
   function openEdit(p: ProductRow) {
     setEditingId(p.id);
@@ -50,6 +71,29 @@ export default function HargaProdukClient({ initialProducts }: { initialProducts
     <div>
       <h1 className="text-xl font-bold mb-4">Harga Produk</h1>
 
+      <div className="flex gap-2 mb-4">
+        {STATUS_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => navigate(t.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${
+              currentStatus === t.key
+                ? "bg-brand text-white border-brand"
+                : "bg-white text-gray-600 border-gray-200"
+            }`}
+          >
+            {t.label}
+            <span
+              className={`text-[11px] px-1.5 rounded-full ${
+                currentStatus === t.key ? "bg-white/20" : "bg-gray-100"
+              }`}
+            >
+              {statusCounts[t.key as keyof typeof statusCounts]}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
         <thead className="bg-gray-100 text-left">
           <tr>
@@ -59,27 +103,45 @@ export default function HargaProdukClient({ initialProducts }: { initialProducts
             <th className="p-3">Jual</th>
             <th className="p-3">Diskon</th>
             <th className="p-3">Stok</th>
+            <th className="p-3">Status</th>
             <th className="p-3">Aksi</th>
           </tr>
         </thead>
         <tbody>
-          {products.map((p) => (
-            <tr key={p.id} className="border-t">
-              <td className="p-3">{p.nama}</td>
-              <td className="p-3 font-mono text-xs text-gray-500">{p.kode_barcode ?? "-"}</td>
-              <td className="p-3">Rp{p.harga_modal.toLocaleString("id-ID")}</td>
-              <td className="p-3">Rp{p.harga_jual.toLocaleString("id-ID")}</td>
-              <td className="p-3">{p.diskon_persen > 0 ? `${p.diskon_persen}%` : "-"}</td>
-              <td className="p-3">
-                {p.stok} {p.satuan}
-              </td>
-              <td className="p-3">
-                <button onClick={() => openEdit(p)} className="text-brand text-xs">
-                  Edit
-                </button>
+          {products.length === 0 ? (
+            <tr>
+              <td colSpan={8} className="p-4 text-center text-gray-400 italic">
+                {currentStatus === "arsip" ? "Belum ada produk yang diarsipkan." : "Belum ada produk."}
               </td>
             </tr>
-          ))}
+          ) : (
+            products.map((p) => (
+              <tr key={p.id} className="border-t">
+                <td className="p-3">{p.nama}</td>
+                <td className="p-3 font-mono text-xs text-gray-500">{p.kode_barcode ?? "-"}</td>
+                <td className="p-3">Rp{p.harga_modal.toLocaleString("id-ID")}</td>
+                <td className="p-3">Rp{p.harga_jual.toLocaleString("id-ID")}</td>
+                <td className="p-3">{p.diskon_persen > 0 ? `${p.diskon_persen}%` : "-"}</td>
+                <td className="p-3">
+                  {p.stok} {p.satuan}
+                </td>
+                <td className="p-3">
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full ${
+                      p.is_aktif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {p.is_aktif ? "Aktif" : "Arsip"}
+                  </span>
+                </td>
+                <td className="p-3">
+                  <button onClick={() => openEdit(p)} className="text-brand text-xs">
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
 
