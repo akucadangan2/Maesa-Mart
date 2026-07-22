@@ -165,9 +165,17 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
         return;
       }
       const data = await searchKasirItems(query);
-      if (seq === searchSeq.current) setResults(data);
+      if (seq !== searchSeq.current) return;
+      // Hasil cocok cuma 1 (barcode scan biasanya begini), langsung masuk
+      // billing tanpa perlu tekan Enter lagi.
+      if (data.length === 1) {
+        tambahKeCart(data[0]);
+      } else {
+        setResults(data);
+      }
     }, 250);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   // Badge angka pesanan yang perlu validasi, update sendiri real-time
@@ -211,7 +219,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   }, [onlineOpen, onlineFilter]);
 
   function tambahKeCart(item: KasirSearchResult) {
-    const unit = item.units.find((u) => unitKeyOf(u) === item.matchedUnitKey) ?? item.units[0];
+    // Selalu default ke satuan eceran pas scan, biar konsisten. Kalau
+    // pelanggan beli satuan besar, kasir ubah manual lewat dropdown satuan
+    // di baris keranjangnya.
+    const unit = item.units[0];
     const key = unitKeyOf(unit);
     const jumlah = Math.max(1, Number(jumlahScan) || 1);
 
@@ -639,109 +650,126 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
       {checkoutOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-lg">Selesaikan Transaksi</h2>
-              <button onClick={() => setCheckoutOpen(false)} className="text-gray-400">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="bg-brand text-white rounded-xl p-5 text-center mb-4">
-              <div className="text-sm text-white/80 mb-1">Total Bayar</div>
-              <div className="text-4xl font-bold font-mono">
-                Rp{totalSetelahDiskon.toLocaleString("id-ID")}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSelesaikan();
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-lg">Selesaikan Transaksi</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCheckoutOpen(false);
+                    setUangDiterima("");
+                    setDiskonManual("");
+                    setNoReferensi("");
+                    setMetodeBayarId("cash");
+                  }}
+                  className="text-gray-400"
+                >
+                  <X size={18} />
+                </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <label className="text-xs font-medium block mb-1">Total Harga</label>
-                <div className="border rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono">
-                  Rp{subtotal.toLocaleString("id-ID")}
+              <div className="bg-brand text-white rounded-xl p-5 text-center mb-4">
+                <div className="text-sm text-white/80 mb-1">Total Bayar</div>
+                <div className="text-4xl font-bold font-mono">
+                  Rp{totalSetelahDiskon.toLocaleString("id-ID")}
                 </div>
               </div>
-              <div>
-                <label className="text-xs font-medium block mb-1">Diskon (Rp)</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={diskonManual}
-                  onChange={(e) => setDiskonManual(formatRibuan(e.target.value))}
-                  placeholder="0"
-                  className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium block mb-1">Kode Pembeli (opsional)</label>
-                <input
-                  value={kodePembeli}
-                  onChange={(e) => setKodePembeli(e.target.value)}
-                  className="border rounded-lg w-full px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium block mb-1">Nama Pembeli (opsional)</label>
-                <input
-                  value={namaPembeli}
-                  onChange={(e) => setNamaPembeli(e.target.value)}
-                  className="border rounded-lg w-full px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
 
-            <label className="text-xs font-medium block mb-1">Metode Bayar</label>
-            <select
-              value={metodeBayarId}
-              onChange={(e) => setMetodeBayarId(e.target.value)}
-              className="border rounded-lg w-full px-3 py-2.5 text-sm bg-white mb-3"
-            >
-              {METODE_BAYAR_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-
-            {isTunai ? (
-              <div className="mb-3">
-                <label className="text-xs font-medium block mb-1">Uang Diterima</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={uangDiterima}
-                  onChange={(e) => setUangDiterima(formatRibuan(e.target.value))}
-                  placeholder="0"
-                  className="border rounded-lg w-full px-3 py-3 text-lg font-mono font-semibold"
-                />
-                {kembalian !== null && kembalian >= 0 && (
-                  <div className="mt-2 bg-brand/10 rounded-lg p-3 text-center">
-                    <div className="text-xs text-brand/70">Kembalian</div>
-                    <div className="text-2xl font-bold font-mono text-brand">
-                      Rp{kembalian.toLocaleString("id-ID")}
-                    </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Total Harga</label>
+                  <div className="border rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono">
+                    Rp{subtotal.toLocaleString("id-ID")}
                   </div>
-                )}
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Diskon (Rp)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={diskonManual}
+                    onChange={(e) => setDiskonManual(formatRibuan(e.target.value))}
+                    placeholder="0"
+                    className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Kode Pembeli (opsional)</label>
+                  <input
+                    value={kodePembeli}
+                    onChange={(e) => setKodePembeli(e.target.value)}
+                    className="border rounded-lg w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Nama Pembeli (opsional)</label>
+                  <input
+                    value={namaPembeli}
+                    onChange={(e) => setNamaPembeli(e.target.value)}
+                    className="border rounded-lg w-full px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="mb-3">
-                <label className="text-xs font-medium block mb-1">No Referensi (opsional)</label>
-                <input
-                  value={noReferensi}
-                  onChange={(e) => setNoReferensi(e.target.value)}
-                  className="border rounded-lg w-full px-3 py-2 text-sm"
-                />
-              </div>
-            )}
 
-            {errorMsg && <p className="text-red-500 text-xs mb-3">{errorMsg}</p>}
+              <label className="text-xs font-medium block mb-1">Metode Bayar</label>
+              <select
+                value={metodeBayarId}
+                onChange={(e) => setMetodeBayarId(e.target.value)}
+                className="border rounded-lg w-full px-3 py-2.5 text-sm bg-white mb-3"
+              >
+                {METODE_BAYAR_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
 
-            <button
-              onClick={handleSelesaikan}
-              disabled={submitting}
-              className="w-full bg-brand text-white rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-            >
-              {submitting ? "Memproses..." : "Selesaikan"}
-            </button>
+              {isTunai ? (
+                <div className="mb-3">
+                  <label className="text-xs font-medium block mb-1">Uang Diterima</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={uangDiterima}
+                    onChange={(e) => setUangDiterima(formatRibuan(e.target.value))}
+                    placeholder="0"
+                    className="border rounded-lg w-full px-3 py-3 text-lg font-mono font-semibold"
+                  />
+                  {kembalian !== null && kembalian >= 0 && (
+                    <div className="mt-2 bg-brand/10 rounded-lg p-3 text-center">
+                      <div className="text-xs text-brand/70">Kembalian</div>
+                      <div className="text-2xl font-bold font-mono text-brand">
+                        Rp{kembalian.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mb-3">
+                  <label className="text-xs font-medium block mb-1">No Referensi (opsional)</label>
+                  <input
+                    value={noReferensi}
+                    onChange={(e) => setNoReferensi(e.target.value)}
+                    className="border rounded-lg w-full px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+
+              {errorMsg && <p className="text-red-500 text-xs mb-3">{errorMsg}</p>}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-brand text-white rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+              >
+                {submitting ? "Memproses..." : "Selesaikan"}
+              </button>
+            </form>
           </div>
         </div>
       )}

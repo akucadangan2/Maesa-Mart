@@ -17,6 +17,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { simpanNoHpTamu } from "@/lib/guestHistory";
 import { createDokuPayment } from "./doku-actions";
+import { getMinimalBelanja } from "@/app/admin/pengaturan-toko/actions";
 import type { Category, Product, ProductUnit } from "@/lib/types";
 
 interface CartItem {
@@ -92,16 +93,19 @@ export default function OrderPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [successOrder, setSuccessOrder] = useState<string | null>(null);
+  const [minimalBelanja, setMinimalBelanja] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
-      const [{ data: cats }, { data: prods }, { data: units }, { data: userData }] = await Promise.all([
+      const [{ data: cats }, { data: prods }, { data: units }, { data: userData }, minBelanja] = await Promise.all([
         supabase.from("categories").select("*").order("urutan"),
         supabase.from("products").select("*").eq("is_aktif", true),
         supabase.from("product_units").select("*").not("harga_jual", "is", null),
         supabase.auth.getUser(),
+        getMinimalBelanja(),
       ]);
+      setMinimalBelanja(minBelanja);
 
       setCategories(cats ?? []);
       setProducts(prods ?? []);
@@ -231,6 +235,12 @@ export default function OrderPage() {
     setErrorMsg(null);
     if (cart.length === 0) {
       setErrorMsg("Keranjang masih kosong.");
+      return;
+    }
+    if (minimalBelanja > 0 && totalJual < minimalBelanja) {
+      setErrorMsg(
+        `Minimal belanja Rp${minimalBelanja.toLocaleString("id-ID")} buat pesan online. Kurang Rp${(minimalBelanja - totalJual).toLocaleString("id-ID")} lagi.`
+      );
       return;
     }
     if (!isLoggedIn && (!guestNama.trim() || !guestNoHp.trim())) {
@@ -699,6 +709,12 @@ export default function OrderPage() {
 
                 {errorMsg && <p className="text-red-500 text-xs mb-3">{errorMsg}</p>}
 
+                {minimalBelanja > 0 && totalJual < minimalBelanja && (
+                  <p className="text-xs text-orange-600 mb-2 text-center">
+                    Minimal belanja Rp{minimalBelanja.toLocaleString("id-ID")} — kurang Rp
+                    {(minimalBelanja - totalJual).toLocaleString("id-ID")} lagi.
+                  </p>
+                )}
                 <button
                   onClick={handleCheckout}
                   disabled={submitting}
