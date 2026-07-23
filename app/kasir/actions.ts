@@ -120,6 +120,7 @@ interface PosSaleItem {
 
 export async function createPosSale(payload: {
   kasir_id: string;
+  customer_id?: string | null;
   metode_bayar: "tunai" | "kartu" | "transfer" | "ewallet";
   detail_bayar: string | null;
   no_referensi: string | null;
@@ -134,7 +135,37 @@ export async function createPosSale(payload: {
   const supabase = createServiceRoleClient();
 
   const subtotal = payload.items.reduce((sum, it) => sum + it.harga_jual * it.qty, 0);
-  const totalJual = Math.max(0, subtotal - payload.diskon_manual);
+
+  // ===== Diskon membership (kalau ada member dipilih) =====
+  let diskonMembership = 0;
+  let member: { id: string; total_poin: number } | null = null;
+
+  if (payload.customer_id) {
+    const { data: customerRow } = await supabase
+      .from("customers")
+      .select("id, total_poin")
+      .eq("id", payload.customer_id)
+      .single();
+
+    if (customerRow) {
+      member = customerRow;
+      const { data: tiers } = await supabase
+        .from("membership_diskon_tier")
+        .select("minimal_poin, diskon_persen, minimal_belanja")
+        .eq("is_aktif", true);
+
+      const eligible = (tiers ?? []).filter(
+        (t) => member!.total_poin >= t.minimal_poin && subtotal >= t.minimal_belanja
+      );
+
+      if (eligible.length > 0) {
+        const best = eligible.reduce((a, b) => (b.diskon_persen > a.diskon_persen ? b : a));
+        diskonMembership = Math.round(subtotal * (best.diskon_persen / 100));
+      }
+    }
+  }
+
+  const totalJual = Math.max(0, subtotal - payload.diskon_manual - diskonMembership);
   const totalModal = payload.items.reduce(
     (sum, it) => sum + it.harga_modal_per_eceran * it.qty * it.konversi,
     0
@@ -151,7 +182,7 @@ export async function createPosSale(payload: {
     nomor_order: nomorOrder,
     channel: "pos",
     kasir_id: payload.kasir_id,
-    customer_id: null,
+    customer_id: payload.customer_id ?? null,
     guest_nama: null,
     guest_no_hp: null,
     nama_pembeli_pos: payload.nama_pembeli_pos,
@@ -160,6 +191,7 @@ export async function createPosSale(payload: {
     detail_bayar: payload.detail_bayar,
     no_referensi: payload.no_referensi,
     diskon_manual: payload.diskon_manual,
+    diskon_membership: diskonMembership,
     status_pesanan: "selesai",
     status_pembayaran: "lunas",
     catatan: null,
@@ -198,7 +230,43 @@ export async function createPosSale(payload: {
       .eq("id", it.product_id);
   }
 
+  // ===== Poin membership (kalau ada member) =====
+  let poinDiperoleh = 0;
+  if (member) {
+    const productIds = [...new Set(payload.items.map((it) => it.product_id))];
+    const { data: poinConfigs } = await supabase
+      .from("product_poin_config")
+      .select("product_id, product_unit_id, poin_per_unit")
+      .in("product_id", productIds);
+
+    for (const it of payload.items) {
+      const config = (poinConfigs ?? []).find(
+        (c) =>
+          c.product_id === it.product_id &&
+          (c.product_unit_id ?? null) === (it.product_unit_id ?? null)
+      );
+      if (config) {
+        poinDiperoleh += config.poin_per_unit * it.qty;
+      }
+    }
+
+    if (poinDiperoleh > 0) {
+      await supabase.from("membership_poin_log").insert({
+        customer_id: member.id,
+        order_id: orderId,
+        poin_diperoleh: poinDiperoleh,
+        keterangan: `Transaksi ${nomorOrder}`,
+      });
+
+      await supabase
+        .from("customers")
+        .update({ total_poin: member.total_poin + poinDiperoleh })
+        .eq("id", member.id);
+    }
+  }
+
   revalidatePath("/admin/produk");
+  revalidatePath("/admin/pelanggan");
   revalidatePath("/order");
 
   const kembalian =
@@ -211,10 +279,17 @@ export async function createPosSale(payload: {
     total_jual: totalJual,
     kembalian,
     metode_bayar: payload.metode_bayar,
+    detail_bayar: payload.detail_bayar,
+    no_referensi: payload.no_referensi,
+    nama_pembeli: payload.nama_pembeli_pos,
+    diskon_membership: diskonMembership,
+    poin_diperoleh: poinDiperoleh,
     created_at: new Date().toISOString(),
     items: payload.items.map((it) => ({
       nama: it.nama_produk,
       qty: it.qty,
+      satuan: it.satuan,
+      harga_satuan: it.harga_jual,
       subtotal: it.harga_jual * it.qty,
     })),
   };
@@ -229,7 +304,7 @@ export async function getRiwayatKasirHariIni(kasirId: string) {
   const { data } = await supabase
     .from("orders")
     .select(
-      "id, nomor_order, total_jual, metode_bayar, created_at, order_items(nama_produk_snapshot, qty, subtotal)"
+      "id, nomor_order, total_jual, metode_bayar, detail_bayar, no_referensi, nama_pembeli_pos, created_at, order_items(nama_produk_snapshot, qty, harga_jual_saat_itu, subtotal)"
     )
     .eq("kasir_id", kasirId)
     .eq("channel", "pos")

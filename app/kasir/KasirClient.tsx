@@ -23,6 +23,7 @@ import {
 } from "./actions";
 import { METODE_BAYAR_OPTIONS } from "./metodeBayar";
 import { useKasirHybrid, getLocalServerUrl, setLocalServerUrlPref } from "./hooks/useKasirHybrid";
+import { cariMember, getActiveTiers, type MemberResult, type DiskonTierRingkas } from "./membershipActions";
 import CheckoutModal from "./components/CheckoutModal";
 import PendingListModal from "./components/PendingListModal";
 import ReceiptModal from "./components/ReceiptModal";
@@ -100,6 +101,11 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   const [metodeBayarId, setMetodeBayarId] = useState("cash");
   const [noReferensi, setNoReferensi] = useState("");
   const [uangDiterima, setUangDiterima] = useState("");
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberResults, setMemberResults] = useState<MemberResult[]>([]);
+  const [selectedMember, setSelectedMember] = useState<MemberResult | null>(null);
+  const [activeTiers, setActiveTiers] = useState<DiskonTierRingkas[]>([]);
+  const memberSearchSeq = useRef(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -126,6 +132,23 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    getActiveTiers().then(setActiveTiers).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const seq = ++memberSearchSeq.current;
+    const t = setTimeout(async () => {
+      if (!memberQuery.trim() || selectedMember) {
+        setMemberResults([]);
+        return;
+      }
+      const data = await cariMember(memberQuery);
+      if (seq === memberSearchSeq.current) setMemberResults(data);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [memberQuery, selectedMember]);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -257,7 +280,18 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
 
   const subtotal = cart.reduce((sum, line) => sum + selectedUnit(line).harga_jual * line.qty, 0);
   const diskonNum = parseRibuan(diskonManual);
-  const totalSetelahDiskon = Math.max(0, subtotal - diskonNum);
+
+  const diskonMembership = (() => {
+    if (!selectedMember) return 0;
+    const eligible = activeTiers.filter(
+      (t) => selectedMember.total_poin >= t.minimal_poin && subtotal >= t.minimal_belanja
+    );
+    if (eligible.length === 0) return 0;
+    const best = eligible.reduce((a, b) => (b.diskon_persen > a.diskon_persen ? b : a));
+    return Math.round(subtotal * (best.diskon_persen / 100));
+  })();
+
+  const totalSetelahDiskon = Math.max(0, subtotal - diskonNum - diskonMembership);
   const uangDiterimaNum = parseRibuan(uangDiterima);
   const kembalian = isTunai ? uangDiterimaNum - totalSetelahDiskon : null;
 
@@ -269,6 +303,8 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     setMetodeBayarId("cash");
     setNoReferensi("");
     setUangDiterima("");
+    setMemberQuery("");
+    setSelectedMember(null);
   }
 
   function handleTahan() {
@@ -299,6 +335,8 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     setDiskonManual("");
     setNoReferensi("");
     setMetodeBayarId("cash");
+    setMemberQuery("");
+    setSelectedMember(null);
   }
 
   async function handleSelesaikan() {
@@ -317,6 +355,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     try {
       const result = await buatPenjualanHybrid({
         kasir_id: staffId,
+        customer_id: selectedMember?.id ?? null,
         metode_bayar: metodeBayarOption.kategori,
         detail_bayar: isTunai ? null : metodeBayarOption.name,
         no_referensi: isTunai ? null : noReferensi || null,
@@ -680,6 +719,12 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           kembalian={kembalian}
           noReferensi={noReferensi}
           onNoReferensiChange={setNoReferensi}
+          memberQuery={memberQuery}
+          onMemberQueryChange={setMemberQuery}
+          memberResults={memberResults}
+          selectedMember={selectedMember}
+          onSelectMember={setSelectedMember}
+          diskonMembership={diskonMembership}
           errorMsg={errorMsg}
           submitting={submitting}
           onSubmit={handleSelesaikan}

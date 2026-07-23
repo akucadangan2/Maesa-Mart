@@ -1,7 +1,8 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X, Award, UserCheck } from "lucide-react";
 import { METODE_BAYAR_OPTIONS } from "../metodeBayar";
+import type { MemberResult } from "../membershipActions";
 
 export default function CheckoutModal({
   subtotal,
@@ -20,6 +21,12 @@ export default function CheckoutModal({
   kembalian,
   noReferensi,
   onNoReferensiChange,
+  memberQuery,
+  onMemberQueryChange,
+  memberResults,
+  selectedMember,
+  onSelectMember,
+  diskonMembership,
   errorMsg,
   submitting,
   onSubmit,
@@ -41,6 +48,12 @@ export default function CheckoutModal({
   kembalian: number | null;
   noReferensi: string;
   onNoReferensiChange: (v: string) => void;
+  memberQuery: string;
+  onMemberQueryChange: (v: string) => void;
+  memberResults: MemberResult[];
+  selectedMember: MemberResult | null;
+  onSelectMember: (m: MemberResult | null) => void;
+  diskonMembership: number;
   errorMsg: string | null;
   submitting: boolean;
   onSubmit: () => void;
@@ -67,6 +80,72 @@ export default function CheckoutModal({
             <div className="text-4xl font-bold font-mono">
               Rp{totalSetelahDiskon.toLocaleString("id-ID")}
             </div>
+            {diskonMembership > 0 && (
+              <div className="text-xs text-white/80 mt-1">
+                (sudah termasuk diskon member -Rp{diskonMembership.toLocaleString("id-ID")})
+              </div>
+            )}
+          </div>
+
+          {/* ===== Member (Opsional) ===== */}
+          <div className="mb-3">
+            <label className="text-xs font-medium block mb-1">Member (Opsional)</label>
+            {selectedMember ? (
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <UserCheck size={16} className="text-amber-600 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{selectedMember.nama}</div>
+                    <div className="text-xs text-gray-500">
+                      {selectedMember.no_hp} ·{" "}
+                      <span className="text-amber-700 font-medium">
+                        {selectedMember.total_poin.toLocaleString("id-ID")} poin
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectMember(null)}
+                  className="text-xs text-red-500 shrink-0 ml-2"
+                >
+                  Hapus
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  value={memberQuery}
+                  onChange={(e) => onMemberQueryChange(e.target.value)}
+                  placeholder="Cari No HP atau Nama member..."
+                  className="border rounded-lg w-full px-3 py-2 text-sm"
+                />
+                {memberQuery.trim() && memberResults.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {memberResults.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => onSelectMember(m)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 border-b last:border-0"
+                      >
+                        <div>
+                          <div className="font-medium">{m.nama}</div>
+                          <div className="text-xs text-gray-500">{m.no_hp}</div>
+                        </div>
+                        <span className="flex items-center gap-1 text-xs text-amber-600 font-medium shrink-0">
+                          <Award size={12} />
+                          {m.total_poin}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {memberQuery.trim() && memberResults.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-1">Member gak ditemukan.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -77,7 +156,7 @@ export default function CheckoutModal({
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium block mb-1">Diskon (Rp)</label>
+              <label className="text-xs font-medium block mb-1">Diskon Manual (Rp)</label>
               <input
                 type="text"
                 inputMode="numeric"
