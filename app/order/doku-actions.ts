@@ -2,6 +2,7 @@
 
 import crypto from "crypto";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { awardPoinUntukOrder } from "@/app/kasir/membershipActions";
 
 const DOKU_BASE_URL = process.env.DOKU_BASE_URL || "https://api-sandbox.doku.com";
 const DOKU_CLIENT_ID = process.env.DOKU_CLIENT_ID!;
@@ -148,6 +149,7 @@ export async function syncDokuPaymentStatus(orderId: string): Promise<{ status: 
 
   if (transactionStatus === "SUCCESS" && order.status_pembayaran !== "lunas") {
     await supabase.from("orders").update({ status_pembayaran: "lunas" }).eq("id", orderId);
+    await awardPoinUntukOrder(orderId);
     updated = true;
   }
 

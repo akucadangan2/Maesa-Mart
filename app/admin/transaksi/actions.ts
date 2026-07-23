@@ -3,6 +3,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { StatusPesanan, StatusPembayaran } from "@/lib/types";
+import { awardPoinUntukOrder } from "@/app/kasir/membershipActions";
 
 export async function updateStatusPesanan(id: string, status: StatusPesanan) {
   const supabase = createServiceRoleClient();
@@ -18,6 +19,11 @@ export async function updateStatusPembayaran(id: string, status: StatusPembayara
     .update({ status_pembayaran: status })
     .eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (status === "lunas") {
+    await awardPoinUntukOrder(id);
+  }
+
   revalidatePath("/admin/transaksi");
 }
 

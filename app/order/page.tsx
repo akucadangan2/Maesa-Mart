@@ -13,11 +13,13 @@ import {
   Receipt,
   User,
   MapPin,
+  Award,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { simpanNoHpTamu } from "@/lib/guestHistory";
 import { createDokuPayment } from "./doku-actions";
 import { getMinimalBelanja } from "@/app/admin/pengaturan-toko/actions";
+import { getActiveTiers, type DiskonTierRingkas } from "@/app/kasir/membershipActions";
 import type { Category, Product, ProductUnit } from "@/lib/types";
 
 interface CartItem {
@@ -88,6 +90,8 @@ export default function OrderPage() {
   const [alamatPengantaran, setAlamatPengantaran] = useState("");
 
   const [customerId, setCustomerId] = useState<string | null>(null);
+  const [memberPoin, setMemberPoin] = useState(0);
+  const [activeTiers, setActiveTiers] = useState<DiskonTierRingkas[]>([]);
   const [guestNama, setGuestNama] = useState("");
   const [guestNoHp, setGuestNoHp] = useState("");
 
@@ -98,14 +102,17 @@ export default function OrderPage() {
 
   useEffect(() => {
     async function loadData() {
-      const [{ data: cats }, { data: prods }, { data: units }, { data: userData }, minBelanja] = await Promise.all([
-        supabase.from("categories").select("*").order("urutan"),
-        supabase.from("products").select("*").eq("is_aktif", true),
-        supabase.from("product_units").select("*").not("harga_jual", "is", null),
-        supabase.auth.getUser(),
-        getMinimalBelanja(),
-      ]);
+      const [{ data: cats }, { data: prods }, { data: units }, { data: userData }, minBelanja, tiers] =
+        await Promise.all([
+          supabase.from("categories").select("*").order("urutan"),
+          supabase.from("products").select("*").eq("is_aktif", true),
+          supabase.from("product_units").select("*").not("harga_jual", "is", null),
+          supabase.auth.getUser(),
+          getMinimalBelanja(),
+          getActiveTiers(),
+        ]);
       setMinimalBelanja(minBelanja);
+      setActiveTiers(tiers);
 
       setCategories(cats ?? []);
       setProducts(prods ?? []);
@@ -122,10 +129,15 @@ export default function OrderPage() {
       if (userData?.user) {
         const { data: customerRow } = await supabase
           .from("customers")
-          .select("id")
+          .select("id, total_poin")
           .eq("id", userData.user.id)
           .maybeSingle();
-        setCustomerId(customerRow ? userData.user.id : null);
+        if (customerRow) {
+          setCustomerId(userData.user.id);
+          setMemberPoin(customerRow.total_poin ?? 0);
+        } else {
+          setCustomerId(null);
+        }
       } else {
         setCustomerId(null);
       }
@@ -231,6 +243,18 @@ export default function OrderPage() {
   }, 0);
   const totalItemDiKeranjang = cart.reduce((sum, item) => sum + item.qty, 0);
 
+  const diskonMembership = (() => {
+    if (!isLoggedIn) return 0;
+    const eligible = activeTiers.filter(
+      (t) => memberPoin >= t.minimal_poin && totalJual >= t.minimal_belanja
+    );
+    if (eligible.length === 0) return 0;
+    const best = eligible.reduce((a, b) => (b.diskon_persen > a.diskon_persen ? b : a));
+    return Math.round(totalJual * (best.diskon_persen / 100));
+  })();
+
+  const totalSetelahDiskon = Math.max(0, totalJual - diskonMembership);
+
   async function handleCheckout() {
     setErrorMsg(null);
     if (cart.length === 0) {
@@ -270,7 +294,8 @@ export default function OrderPage() {
         status_pembayaran: metodeBayar === "tunai" ? "belum_bayar" : "menunggu_konfirmasi",
         catatan: catatan || null,
         total_modal: totalModal,
-        total_jual: totalJual,
+        total_jual: totalSetelahDiskon,
+        diskon_membership: diskonMembership,
         metode_ambil: metodeAmbil,
         lokasi_lat: metodeAmbil === "diantar" ? lokasiLat : null,
         lokasi_lng: metodeAmbil === "diantar" ? lokasiLng : null,
@@ -458,7 +483,7 @@ export default function OrderPage() {
             <span className="text-sm">
               {totalItemDiKeranjang} item ·{" "}
               <span className="font-mono font-semibold">
-                Rp{totalJual.toLocaleString("id-ID")}
+                Rp{totalSetelahDiskon.toLocaleString("id-ID")}
               </span>
             </span>
             <span className="text-sm font-medium">Lihat Keranjang →</span>
@@ -519,6 +544,13 @@ export default function OrderPage() {
           </div>
 
           <div className="px-5 py-4">
+            {isLoggedIn && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                <Award size={14} />
+                Kamu punya <span className="font-semibold">{memberPoin.toLocaleString("id-ID")} poin</span>
+              </div>
+            )}
+
             {cart.length === 0 ? (
               <p className="text-sm text-ink-soft py-6 text-center">Keranjang masih kosong.</p>
             ) : (
@@ -683,7 +715,8 @@ export default function OrderPage() {
                   <div className="mb-4 space-y-2">
                     <p className="text-xs text-ink-soft">
                       Belum login. Isi nama & no HP supaya toko bisa menghubungi soal pesananmu,
-                      atau <a href="/login" className="text-brand underline">login di sini</a>.
+                      atau <a href="/login" className="text-brand underline">login di sini</a> buat
+                      dapat poin & diskon member.
                     </p>
                     <input
                       value={guestNama}
@@ -700,11 +733,27 @@ export default function OrderPage() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between mb-4 pt-2 border-t border-line">
-                  <span className="text-sm text-ink-soft pt-3">Total Harga</span>
-                  <span className="font-mono font-semibold text-lg pt-3">
-                    Rp{totalJual.toLocaleString("id-ID")}
-                  </span>
+                <div className="space-y-1 mb-4 pt-2 border-t border-line">
+                  <div className="flex items-center justify-between pt-3">
+                    <span className="text-sm text-ink-soft">Total Harga</span>
+                    <span className="font-mono text-sm">Rp{totalJual.toLocaleString("id-ID")}</span>
+                  </div>
+                  {diskonMembership > 0 && (
+                    <div className="flex items-center justify-between text-amber-700">
+                      <span className="text-xs flex items-center gap-1">
+                        <Award size={12} /> Diskon Member
+                      </span>
+                      <span className="font-mono text-xs">
+                        -Rp{diskonMembership.toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Total Bayar</span>
+                    <span className="font-mono font-semibold text-lg">
+                      Rp{totalSetelahDiskon.toLocaleString("id-ID")}
+                    </span>
+                  </div>
                 </div>
 
                 {errorMsg && <p className="text-red-500 text-xs mb-3">{errorMsg}</p>}
