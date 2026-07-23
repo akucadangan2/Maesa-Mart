@@ -137,23 +137,22 @@ export async function createPosSale(payload: {
   const subtotal = payload.items.reduce((sum, it) => sum + it.harga_jual * it.qty, 0);
 
   // ===== Diskon membership (kalau ada member dipilih) =====
+  // Cek data member + tier diskon SEKALIGUS (paralel), bukan satu-satu,
+  // biar gak nambah waktu tunggu berurutan.
   let diskonMembership = 0;
   let member: { id: string; total_poin: number } | null = null;
 
   if (payload.customer_id) {
-    const { data: customerRow } = await supabase
-      .from("customers")
-      .select("id, total_poin")
-      .eq("id", payload.customer_id)
-      .single();
+    const [{ data: customerRow }, { data: tiers }] = await Promise.all([
+      supabase.from("customers").select("id, total_poin").eq("id", payload.customer_id).single(),
+      supabase
+        .from("membership_diskon_tier")
+        .select("minimal_poin, diskon_persen, minimal_belanja")
+        .eq("is_aktif", true),
+    ]);
 
     if (customerRow) {
       member = customerRow;
-      const { data: tiers } = await supabase
-        .from("membership_diskon_tier")
-        .select("minimal_poin, diskon_persen, minimal_belanja")
-        .eq("is_aktif", true);
-
       const eligible = (tiers ?? []).filter(
         (t) => member!.total_poin >= t.minimal_poin && subtotal >= t.minimal_belanja
       );
@@ -215,53 +214,71 @@ export async function createPosSale(payload: {
   const { error: itemsError } = await supabase.from("order_items").insert(orderItemsPayload);
   if (itemsError) throw new Error("Gagal menyimpan item: " + itemsError.message);
 
+  // Gabungin dulu per produk (kalau ada produk sama muncul 2x di keranjang
+  // dengan satuan beda), baru proses SEMUA produk bebarengan (paralel),
+  // bukan antre satu-satu. Sekaligus jalan bebarengan sama pengecekan poin
+  // per produk di bawah, karena dua-duanya gak saling butuh hasil satu sama lain.
+  const stokDecrements = new Map<string, number>();
   for (const it of payload.items) {
-    const { data: currentProduct } = await supabase
-      .from("products")
-      .select("stok")
-      .eq("id", it.product_id)
-      .single();
-
-    const stokBaru = (currentProduct?.stok ?? 0) - it.qty * it.konversi;
-
-    await supabase
-      .from("products")
-      .update({ stok: stokBaru, updated_at: new Date().toISOString() })
-      .eq("id", it.product_id);
+    const decrement = it.qty * it.konversi;
+    stokDecrements.set(it.product_id, (stokDecrements.get(it.product_id) ?? 0) + decrement);
   }
+
+  const productIds = [...new Set(payload.items.map((it) => it.product_id))];
+
+  const [, poinConfigsResult] = await Promise.all([
+    Promise.all(
+      Array.from(stokDecrements.entries()).map(async ([productId, decrement]) => {
+        const { data: currentProduct } = await supabase
+          .from("products")
+          .select("stok")
+          .eq("id", productId)
+          .single();
+
+        const stokBaru = (currentProduct?.stok ?? 0) - decrement;
+
+        await supabase
+          .from("products")
+          .update({ stok: stokBaru, updated_at: new Date().toISOString() })
+          .eq("id", productId);
+      })
+    ),
+    member
+      ? supabase
+          .from("product_poin_config")
+          .select("product_id, product_unit_id, poin_per_unit")
+          .in("product_id", productIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
 
   // ===== Poin membership (kalau ada member) =====
   let poinDiperoleh = 0;
   if (member) {
-    const productIds = [...new Set(payload.items.map((it) => it.product_id))];
-    const { data: poinConfigs } = await supabase
-      .from("product_poin_config")
-      .select("product_id, product_unit_id, poin_per_unit")
-      .in("product_id", productIds);
-
+    const poinConfigs = (poinConfigsResult as any).data ?? [];
     for (const it of payload.items) {
-      const config = (poinConfigs ?? []).find(
-        (c) =>
+      const config = poinConfigs.find(
+        (c: any) =>
           c.product_id === it.product_id &&
           (c.product_unit_id ?? null) === (it.product_unit_id ?? null)
       );
-      if (config) {
-        poinDiperoleh += config.poin_per_unit * it.qty;
-      }
+      if (config) poinDiperoleh += config.poin_per_unit * it.qty;
     }
 
     if (poinDiperoleh > 0) {
-      await supabase.from("membership_poin_log").insert({
-        customer_id: member.id,
-        order_id: orderId,
-        poin_diperoleh: poinDiperoleh,
-        keterangan: `Transaksi ${nomorOrder}`,
-      });
-
-      await supabase
-        .from("customers")
-        .update({ total_poin: member.total_poin + poinDiperoleh })
-        .eq("id", member.id);
+      // Insert log poin + update total poin member bisa jalan bebarengan,
+      // dua-duanya gak butuh hasil satu sama lain.
+      await Promise.all([
+        supabase.from("membership_poin_log").insert({
+          customer_id: member.id,
+          order_id: orderId,
+          poin_diperoleh: poinDiperoleh,
+          keterangan: `Transaksi ${nomorOrder}`,
+        }),
+        supabase
+          .from("customers")
+          .update({ total_poin: member.total_poin + poinDiperoleh })
+          .eq("id", member.id),
+      ]);
     }
   }
 
