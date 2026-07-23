@@ -26,8 +26,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { href: "/admin/kategori", label: "Kategori" },
       { href: "/admin/supplier", label: "Data Supplier" },
-      { href: "/admin/pelanggan", label: "Data Pelanggan", superAdminOnly: true },
-      { href: "/admin/bank", label: "Rekening Bank", superAdminOnly: true },
+      { href: "/admin/pelanggan", label: "Data Membership", superAdminOnly: true },
     ],
   },
   {
