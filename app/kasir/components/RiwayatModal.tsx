@@ -47,6 +47,9 @@ export default function RiwayatModal({
                         nama_pembeli: r.nama_pembeli_pos ?? r.nama_pembeli,
                         detail_bayar: r.detail_bayar,
                         no_referensi: r.no_referensi,
+                        diskon_membership: r.diskon_membership,
+                        member_nama: r.customers?.nama ?? null,
+                        member_no_hp: r.customers?.no_hp ?? null,
                         items: (r.order_items ?? []).map((it: any) => ({
                           nama: it.nama_produk_snapshot,
                           qty: it.qty,

@@ -38,6 +38,9 @@ export default function ReceiptModal({
                 nama_pembeli: receipt.nama_pembeli,
                 detail_bayar: receipt.detail_bayar,
                 no_referensi: receipt.no_referensi,
+                diskon_membership: receipt.diskon_membership,
+                member_nama: receipt.member_nama,
+                member_no_hp: receipt.member_no_hp,
               })
             }
             className="flex-1 border rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-1.5"

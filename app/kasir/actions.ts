@@ -144,7 +144,7 @@ export async function createPosSale(payload: {
 
   if (payload.customer_id) {
     const [{ data: customerRow }, { data: tiers }] = await Promise.all([
-      supabase.from("customers").select("id, total_poin").eq("id", payload.customer_id).single(),
+      supabase.from("customers").select("id, nama, no_hp, total_poin").eq("id", payload.customer_id).single(),
       supabase
         .from("membership_diskon_tier")
         .select("minimal_poin, diskon_persen, minimal_belanja")
@@ -301,6 +301,8 @@ export async function createPosSale(payload: {
     nama_pembeli: payload.nama_pembeli_pos,
     diskon_membership: diskonMembership,
     poin_diperoleh: poinDiperoleh,
+    member_nama: member?.nama ?? null,
+    member_no_hp: member?.no_hp ?? null,
     created_at: new Date().toISOString(),
     items: payload.items.map((it) => ({
       nama: it.nama_produk,

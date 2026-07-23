@@ -42,6 +42,9 @@ interface StrukOrder {
   nama_pembeli?: string | null;
   detail_bayar?: string | null;
   no_referensi?: string | null;
+  diskon_membership?: number;
+  member_nama?: string | null;
+  member_no_hp?: string | null;
 }
 
 function isMobileDevice() {
@@ -79,6 +82,9 @@ async function buildStrukHtml(order: StrukOrder, widthMm: number) {
   const tanggalStr = tgl.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
   const jamStr = tgl.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
+  const subtotalItems = order.items.reduce((s, i) => s + i.subtotal, 0);
+  const adaDiskonMembership = (order.diskon_membership ?? 0) > 0;
+
   const itemsHtml = order.items
     .map((item) => {
       const satuanTxt = item.satuan ? ` ${escapeHtml(item.satuan)}` : "";
@@ -93,6 +99,16 @@ async function buildStrukHtml(order: StrukOrder, widthMm: number) {
         </div>`;
     })
     .join("");
+
+  const memberLine = order.member_nama
+    ? `<div>Member: ${escapeHtml(order.member_nama)}${order.member_no_hp ? " (" + escapeHtml(order.member_no_hp) + ")" : ""}</div>`
+    : "";
+
+  const diskonLines = adaDiskonMembership
+    ? `
+      <div class="row"><span>Subtotal</span><span>${angka(subtotalItems)}</span></div>
+      <div class="row"><span>Diskon Member</span><span>-${angka(order.diskon_membership!)}</span></div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html>
@@ -124,9 +140,11 @@ async function buildStrukHtml(order: StrukOrder, widthMm: number) {
   <div>No. &nbsp;&nbsp;&nbsp;: ${escapeHtml(order.nomor_order)}</div>
   <div class="row"><span>Kasir &nbsp;: ${escapeHtml(order.kasir_nama ?? "-")}</span><span>${tanggalStr}</span></div>
   <div class="row"><span>Pel. &nbsp;&nbsp;: ${escapeHtml(order.nama_pembeli ?? "Umum")}</span><span>${jamStr}</span></div>
+  ${memberLine}
   <hr/>
   ${itemsHtml}
   <hr/>
+  ${diskonLines}
   <div class="row" style="font-weight:bold;"><span>Total</span><span>${angka(order.total_jual)}</span></div>
   <div class="row"><span>Metode bayar:</span><span>${escapeHtml(labelMetodeBayar(order))}</span></div>
   <div class="row"><span>No. Referensi:</span><span>${escapeHtml(order.no_referensi ?? "")}</span></div>
@@ -181,9 +199,14 @@ async function downloadStrukPng(order: StrukOrder) {
   const padding = 24;
   const lineHeight = 16;
   const itemBlockHeight = order.items.length * (lineHeight * 2 + 4);
+  const memberLineHeight = order.member_nama ? 16 : 0;
+  const adaDiskonMembership = (order.diskon_membership ?? 0) > 0;
+  const diskonLinesHeight = adaDiskonMembership ? lineHeight * 2 + 8 : 0;
   const headerHeight = 110;
-  const footerHeight = 130;
-  const height = headerHeight + itemBlockHeight + footerHeight;
+  const footerHeight = 130 + diskonLinesHeight;
+  const height = headerHeight + memberLineHeight + itemBlockHeight + footerHeight;
+
+  const subtotalItems = order.items.reduce((s, i) => s + i.subtotal, 0);
 
   const canvas = document.createElement("canvas");
   const scale = 2;
@@ -225,8 +248,18 @@ async function downloadStrukPng(order: StrukOrder) {
   ctx.fillText(`Pel.  : ${order.nama_pembeli ?? "Umum"}`, padding, y);
   ctx.textAlign = "right";
   ctx.fillText(jamStr, width - padding, y);
-  y += 10;
+  y += lineHeight;
 
+  if (order.member_nama) {
+    ctx.textAlign = "left";
+    const memberTxt = order.member_no_hp
+      ? `Member: ${order.member_nama} (${order.member_no_hp})`
+      : `Member: ${order.member_nama}`;
+    ctx.fillText(memberTxt, padding, y);
+    y += lineHeight;
+  }
+
+  y += 4;
   ctx.strokeStyle = "#999";
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
@@ -257,6 +290,22 @@ async function downloadStrukPng(order: StrukOrder) {
   y += 18;
 
   ctx.setLineDash([]);
+
+  if (adaDiskonMembership) {
+    ctx.font = "11px 'Courier New', monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("Subtotal", padding, y);
+    ctx.textAlign = "right";
+    ctx.fillText(angka(subtotalItems), width - padding, y);
+    y += lineHeight;
+
+    ctx.textAlign = "left";
+    ctx.fillText("Diskon Member", padding, y);
+    ctx.textAlign = "right";
+    ctx.fillText(`-${angka(order.diskon_membership!)}`, width - padding, y);
+    y += lineHeight + 4;
+  }
+
   ctx.font = "bold 12px 'Courier New', monospace";
   ctx.textAlign = "left";
   ctx.fillText("Total", padding, y);
@@ -290,8 +339,8 @@ async function downloadStrukPng(order: StrukOrder) {
 /**
  * Dipakai di semua tempat (kasir, riwayat, akun) sama seperti sebelumnya, nama &
  * signature-nya gak berubah jadi gak perlu ubah kode yang manggil fungsi ini,
- * cuma sekarang menerima beberapa field opsional tambahan (kasir_nama,
- * nama_pembeli, detail_bayar, no_referensi).
+ * cuma sekarang menerima beberapa field opsional tambahan (diskon_membership,
+ * member_nama, member_no_hp) buat nampilin info member & diskon di struk.
  */
 export async function downloadStruk(order: StrukOrder) {
   if (isMobileDevice()) {
