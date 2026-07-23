@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, Download, Package, Award, Phone, ChevronLeft, ChevronRight } from "lucide-react";
+import { LogOut, Download, Package, Award, Phone, ChevronLeft, ChevronRight, ShoppingBasket } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { downloadStruk } from "@/lib/strukGenerator";
 import type { Customer, Order, OrderItem, ProdukFavoritCustomer } from "@/lib/types";
@@ -55,15 +55,24 @@ export default function AkunClient({
 
   return (
     <main className="min-h-screen max-w-lg mx-auto px-4 pb-16">
-      <header className="sticky top-0 z-10 bg-bg/90 backdrop-blur border-b border-line flex items-center justify-between py-4">
+    <header className="sticky top-0 z-10 bg-bg/90 backdrop-blur border-b border-line flex items-center justify-between py-4">
         <h1 className="font-display text-xl font-semibold">Halo, {customer.nama}</h1>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 text-xs text-ink-soft border border-line rounded-full px-3 py-1.5"
-        >
-          <LogOut size={13} />
-          Keluar
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          
+            href="/order"
+            className="flex items-center gap-1.5 text-xs text-brand border border-brand rounded-full px-3 py-1.5"
+          >
+            <ShoppingBasket size={13} />
+            Belanja
+          </a>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-xs text-ink-soft border border-line rounded-full px-3 py-1.5"
+          >
+            <LogOut size={13} />
+            Keluar
+          </button>
+        </div>
       </header>
 
       {/* ===== Kartu Member ===== */}
