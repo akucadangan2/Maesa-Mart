@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ChevronLeft, ChevronRight, Loader2, User } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Loader2, User, Award } from "lucide-react";
 import { getCustomerDetail } from "./actions";
 
 interface CustomerRow {
@@ -12,6 +12,7 @@ interface CustomerRow {
   created_at: string;
   jumlah_transaksi: number;
   total_belanja: number;
+  total_poin: number;
 }
 
 const statusLabel: Record<string, string> = {
@@ -80,9 +81,14 @@ export default function PelangganClient({
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-4">Data Pelanggan</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-bold">Data Membership</h1>
+        <a href="/admin/pengaturan-membership" className="text-sm text-brand hover:underline">
+          Pengaturan Membership →
+        </a>
+      </div>
       <p className="text-sm text-gray-500 mb-4">
-        Pelanggan yang sudah daftar akun & login (bukan pembeli tamu/kasir).
+        Pelanggan yang sudah daftar akun & login otomatis jadi member (bukan pembeli tamu/kasir).
       </p>
 
       <div className="flex gap-2 mb-4">
@@ -107,7 +113,7 @@ export default function PelangganClient({
       </div>
 
       {customers.length === 0 && (
-        <p className="text-sm text-gray-500 py-6 text-center">Belum ada pelanggan terdaftar.</p>
+        <p className="text-sm text-gray-500 py-6 text-center">Belum ada member terdaftar.</p>
       )}
 
       <div className="space-y-2">
@@ -134,6 +140,10 @@ export default function PelangganClient({
                   </div>
                 </div>
                 <div className="text-right shrink-0">
+                  <div className="flex items-center gap-1 justify-end text-xs font-medium text-amber-600 mb-0.5">
+                    <Award size={13} />
+                    {c.total_poin.toLocaleString("id-ID")} poin
+                  </div>
                   <div className="font-semibold text-sm">Rp{c.total_belanja.toLocaleString("id-ID")}</div>
                   <div className="text-xs text-gray-500">{c.jumlah_transaksi} transaksi</div>
                 </div>
@@ -147,7 +157,7 @@ export default function PelangganClient({
                       Memuat detail...
                     </div>
                   ) : detail ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-2">Produk Sering Dibeli</p>
                         {detail.favorit.length === 0 ? (
@@ -178,6 +188,26 @@ export default function PelangganClient({
                                 <span className="text-gray-500 shrink-0 ml-2">
                                   Rp{o.total_jual.toLocaleString("id-ID")} ·{" "}
                                   {statusLabel[o.status_pesanan] ?? o.status_pesanan}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-2">Riwayat Poin</p>
+                        {detail.poinLog.length === 0 ? (
+                          <p className="text-xs text-gray-400">Belum ada poin diperoleh.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {detail.poinLog.map((p: any) => (
+                              <div key={p.id} className="flex justify-between text-xs">
+                                <span className="text-gray-600 truncate">
+                                  {p.keterangan ?? new Date(p.created_at).toLocaleDateString("id-ID")}
+                                </span>
+                                <span className="text-amber-600 font-medium shrink-0 ml-2">
+                                  +{p.poin_diperoleh}
                                 </span>
                               </div>
                             ))}

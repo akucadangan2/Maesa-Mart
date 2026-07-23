@@ -34,9 +34,22 @@ export default async function AdminPelangganPage({
 
   const { data: customers, count } = await query;
 
+  const customerIds = (customers ?? []).map((c: any) => c.customer_id);
+  const { data: poinRows } =
+    customerIds.length > 0
+      ? await supabase.from("customers").select("id, total_poin").in("id", customerIds)
+      : { data: [] as { id: string; total_poin: number }[] };
+
+  const poinMap = new Map((poinRows ?? []).map((p) => [p.id, p.total_poin]));
+
+  const customersWithPoin = (customers ?? []).map((c: any) => ({
+    ...c,
+    total_poin: poinMap.get(c.customer_id) ?? 0,
+  }));
+
   return (
     <PelangganClient
-      customers={customers ?? []}
+      customers={customersWithPoin}
       totalCount={count ?? 0}
       pageSize={pageSize}
       currentPage={page}
