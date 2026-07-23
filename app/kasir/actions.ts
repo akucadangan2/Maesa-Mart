@@ -140,7 +140,7 @@ export async function createPosSale(payload: {
   // Cek data member + tier diskon SEKALIGUS (paralel), bukan satu-satu,
   // biar gak nambah waktu tunggu berurutan.
   let diskonMembership = 0;
-  let member: { id: string; total_poin: number } | null = null;
+  let member: { id: string; nama: string; no_hp: string; total_poin: number } | null = null;
 
   if (payload.customer_id) {
     const [{ data: customerRow }, { data: tiers }] = await Promise.all([
@@ -323,7 +323,7 @@ export async function getRiwayatKasirHariIni(kasirId: string) {
   const { data } = await supabase
     .from("orders")
     .select(
-      "id, nomor_order, total_jual, metode_bayar, detail_bayar, no_referensi, nama_pembeli_pos, created_at, order_items(nama_produk_snapshot, qty, harga_jual_saat_itu, subtotal)"
+      "id, nomor_order, total_jual, metode_bayar, detail_bayar, no_referensi, nama_pembeli_pos, diskon_membership, customers(nama, no_hp), created_at, order_items(nama_produk_snapshot, qty, harga_jual_saat_itu, subtotal)"
     )
     .eq("kasir_id", kasirId)
     .eq("channel", "pos")
