@@ -57,6 +57,12 @@ function selectedUnit(line: CartLine): KasirUnitOption {
   return line.units.find((u) => unitKeyOf(u) === line.selectedUnitKey) ?? line.units[0];
 }
 
+function formatRibuan(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("id-ID");
+}
+
 function parseRibuan(value: string) {
   return Number(value.replace(/\D/g, "")) || 0;
 }
@@ -706,7 +712,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           subtotal={subtotal}
           totalSetelahDiskon={totalSetelahDiskon}
           diskonManual={diskonManual}
-          onDiskonChange={setDiskonManual}
+          onDiskonChange={(v) => setDiskonManual(formatRibuan(v))}
           kodePembeli={kodePembeli}
           onKodePembeliChange={setKodePembeli}
           namaPembeli={namaPembeli}
@@ -715,7 +721,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
           onMetodeBayarChange={setMetodeBayarId}
           isTunai={isTunai}
           uangDiterima={uangDiterima}
-          onUangDiterimaChange={setUangDiterima}
+          onUangDiterimaChange={(v) => setUangDiterima(formatRibuan(v))}
           kembalian={kembalian}
           noReferensi={noReferensi}
           onNoReferensiChange={setNoReferensi}
