@@ -55,10 +55,10 @@ export default function AkunClient({
 
   return (
     <main className="min-h-screen max-w-lg mx-auto px-4 pb-16">
-    <header className="sticky top-0 z-10 bg-bg/90 backdrop-blur border-b border-line flex items-center justify-between py-4">
+      <header className="sticky top-0 z-10 bg-bg/90 backdrop-blur border-b border-line flex items-center justify-between py-4">
         <h1 className="font-display text-xl font-semibold">Halo, {customer.nama}</h1>
         <div className="flex items-center gap-2 shrink-0">
-          
+          <a
             href="/order"
             className="flex items-center gap-1.5 text-xs text-brand border border-brand rounded-full px-3 py-1.5"
           >
