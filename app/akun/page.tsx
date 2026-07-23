@@ -2,7 +2,13 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AkunClient from "./AkunClient";
 
-export default async function AkunPage() {
+const PAGE_SIZE = 10;
+
+export default async function AkunPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const supabase = await createClient();
 
   const {
@@ -28,12 +34,18 @@ export default async function AkunPage() {
   // ke akun ini, sebelum ambil riwayat.
   await supabase.rpc("claim_guest_orders");
 
-  const [{ data: orders }, { data: favorit }] = await Promise.all([
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  const [{ data: orders, count }, { data: favorit }] = await Promise.all([
     supabase
       .from("orders")
-      .select("*, order_items(*)")
+      .select("*, order_items(*)", { count: "exact" })
       .eq("customer_id", user.id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .range(from, to),
     supabase
       .from("v_produk_favorit_customer")
       .select("*")
@@ -42,5 +54,14 @@ export default async function AkunPage() {
       .limit(10),
   ]);
 
-  return <AkunClient customer={customerRow} orders={orders ?? []} favorit={favorit ?? []} />;
+  return (
+    <AkunClient
+      customer={customerRow}
+      orders={orders ?? []}
+      favorit={favorit ?? []}
+      totalCount={count ?? 0}
+      pageSize={PAGE_SIZE}
+      currentPage={page}
+    />
+  );
 }
