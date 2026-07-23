@@ -46,6 +46,15 @@ export interface Order {
   status_pesanan: StatusPesanan;
   status_pembayaran: StatusPembayaran;
   metode_bayar: MetodeBayar;
+  metode_ambil: "ambil_sendiri" | "diantar";
+  lokasi_lat: number | null;
+  lokasi_lng: number | null;
+  alamat_pengantaran: string | null;
+  diskon_manual: number;
+  detail_bayar: string | null;
+  no_referensi: string | null;
+  nama_pembeli_pos: string | null;
+  kode_pembeli_pos: string | null;
   channel: "online" | "pos";
   kasir_id: string | null;
   bank_account_id: string | null;
@@ -156,6 +165,8 @@ export interface Expense {
   id: string;
   created_at: string;
   total_pengeluaran: number;
+  supplier_id: string | null;
+  sumber_lainnya: string | null;
 }
 
 export interface ExpenseItem {
