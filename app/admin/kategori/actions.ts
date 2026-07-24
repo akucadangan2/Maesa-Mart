@@ -40,11 +40,17 @@ export async function deleteCategory(id: string) {
   const { error } = await supabase.from("categories").delete().eq("id", id);
 
   if (error) {
-    // Biasanya gagal karena masih ada produk yang pakai kategori ini
-    // (products.category_id references categories, on delete restrict)
-    throw new Error(
-      "Gagal hapus. Kemungkinan masih ada produk yang pakai kategori ini, pindahkan dulu produknya."
-    );
+    if (error.code === "23503") {
+      const { count } = await supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("category_id", id);
+
+      throw new Error(
+        `Gak bisa dihapus, masih ada ${count ?? "beberapa"} produk yang pakai kategori ini. Pindahkan dulu produknya ke kategori lain lewat halaman Produk (Edit > ganti Kategori), baru coba hapus lagi.`
+      );
+    }
+    throw new Error(error.message);
   }
 
   revalidatePath("/admin/kategori");

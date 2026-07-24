@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Category } from "@/lib/types";
 import { createCategory, updateCategory, deleteCategory } from "./actions";
 
@@ -9,6 +10,7 @@ export default function KategoriClient({
 }: {
   initialCategories: Category[];
 }) {
+  const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export default function KategoriClient({
       }
       setFormOpen(false);
       setEditing(null);
+      router.refresh();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Terjadi kesalahan");
     }
@@ -46,6 +49,7 @@ export default function KategoriClient({
     if (!confirm(`Hapus kategori "${category.nama}"?`)) return;
     try {
       await deleteCategory(category.id);
+      router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Gagal hapus");
     }
