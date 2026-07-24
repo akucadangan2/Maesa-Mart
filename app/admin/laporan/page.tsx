@@ -2,6 +2,9 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import LaporanClient from "./LaporanClient";
 import type { LaporanKeuntunganHarian } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminLaporanPage() {
   const supabase = createServiceRoleClient();
 
