@@ -348,7 +348,7 @@ export default function ProdukClient({
                     {p.is_aktif ? "Aktif" : "Arsip"}
                   </span>
                 </td>
-                <td className="p-3 space-x-2 whitespace-nowrap">
+                  <td className="p-3 space-x-2 whitespace-nowrap">
                   <button onClick={() => openEdit(p)} className="text-brand text-xs">
                     Edit
                   </button>
@@ -361,13 +361,22 @@ export default function ProdukClient({
                       Hapus
                     </button>
                   ) : (
-                    <button
-                      onClick={() => handleToggleActive(p)}
-                      disabled={isPending}
-                      className="text-brand text-xs"
-                    >
-                      Aktifkan Kembali
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleToggleActive(p)}
+                        disabled={isPending}
+                        className="text-brand text-xs"
+                      >
+                        Aktifkan Kembali
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p)}
+                        disabled={isPending}
+                        className="text-red-500 text-xs"
+                      >
+                        Hapus Permanen
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>
