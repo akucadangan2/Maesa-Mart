@@ -60,6 +60,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { href: "/admin/laporan", label: "Laporan Keuntungan", superAdminOnly: true },
       { href: "/admin/laporan-kasir", label: "Laporan Kasir" },
+      { href: "/admin/asisten-stok", label: "Asisten Stok" },
     ],
   },
   {
