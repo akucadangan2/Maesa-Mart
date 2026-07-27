@@ -7,12 +7,13 @@ const DEFAULT_PAGE_SIZE = 20;
 export default async function AdminProdukPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; size?: string; status?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; size?: string; status?: string; category?: string }>;
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
   const q = params.q?.trim() ?? "";
   const status = params.status ?? "aktif"; // "aktif" | "arsip" | "semua"
+  const category = params.category ?? "";
 
   const requestedSize = Number(params.size);
   const pageSize = ALLOWED_PAGE_SIZES.includes(requestedSize as (typeof ALLOWED_PAGE_SIZES)[number])
@@ -33,6 +34,10 @@ export default async function AdminProdukPage({
     query = query.eq("is_aktif", true);
   } else if (status === "arsip") {
     query = query.eq("is_aktif", false);
+  }
+
+  if (category) {
+    query = query.eq("category_id", category);
   }
 
   if (q) {
@@ -58,6 +63,7 @@ export default async function AdminProdukPage({
       currentPage={page}
       currentQuery={q}
       currentStatus={status}
+      currentCategory={category}
       statusCounts={{ aktif: aktifCount ?? 0, arsip: arsipCount ?? 0, semua: semuaCount }}
     />
   );

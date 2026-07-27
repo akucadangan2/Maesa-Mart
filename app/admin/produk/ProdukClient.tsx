@@ -11,6 +11,7 @@ import {
   toggleProductActive,
   getProductUnits,
   createProductUnit,
+  updateProductUnit,
   deleteProductUnit,
 } from "./actions";
 
@@ -46,6 +47,7 @@ export default function ProdukClient({
   currentPage,
   currentQuery,
   currentStatus,
+  currentCategory,
   statusCounts,
 }: {
   initialProducts: Product[];
@@ -55,6 +57,7 @@ export default function ProdukClient({
   currentPage: number;
   currentQuery: string;
   currentStatus: string;
+  currentCategory: string;
   statusCounts: { aktif: number; arsip: number; semua: number };
 }) {
   const router = useRouter();
@@ -80,6 +83,7 @@ export default function ProdukClient({
   const [unitBarcode, setUnitBarcode] = useState("");
   const [unitHargaBeli, setUnitHargaBeli] = useState("");
   const [unitHargaJual, setUnitHargaJual] = useState("");
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
 
   const isCustomSatuan = unitSatuanPreset === "lainnya";
   const finalSatuanValue = isCustomSatuan ? unitSatuanCustom : unitSatuanPreset;
@@ -94,12 +98,14 @@ export default function ProdukClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
-  function navigate(opts: { page: number; q: string; size?: number; status?: string }) {
+  function navigate(opts: { page: number; q: string; size?: number; status?: string; category?: string }) {
     const sp = new URLSearchParams();
     sp.set("page", String(opts.page));
     sp.set("size", String(opts.size ?? pageSize));
     sp.set("status", opts.status ?? currentStatus);
     if (opts.q) sp.set("q", opts.q);
+    const category = opts.category ?? currentCategory;
+    if (category) sp.set("category", category);
     router.push(`/admin/produk?${sp.toString()}`);
   }
 
@@ -111,6 +117,20 @@ export default function ProdukClient({
     setUnitHargaBeli("");
     setUnitHargaJual("");
     setUnitErrorMsg(null);
+    setEditingUnitId(null);
+  }
+
+  function openEditUnit(u: ProductUnit) {
+    setEditingUnitId(u.id);
+    const isPreset = PRESET_SATUAN.includes(u.satuan);
+    setUnitSatuanPreset(isPreset ? u.satuan : "lainnya");
+    setUnitSatuanCustom(isPreset ? "" : u.satuan);
+    setUnitKonversi(String(u.konversi));
+    setUnitBarcode(u.kode_barcode ?? "");
+    setUnitHargaBeli(formatRibuan(String(u.harga_beli)));
+    setUnitHargaJual(u.harga_jual ? formatRibuan(String(u.harga_jual)) : "");
+    setUnitErrorMsg(null);
+    setUnitFormOpen(true);
   }
 
   function openTambah() {
@@ -187,7 +207,7 @@ export default function ProdukClient({
       .finally(() => setIsPending(false));
   }
 
-  async function handleAddUnit() {
+  async function handleSaveUnit() {
     if (!editing) return;
     setUnitErrorMsg(null);
 
@@ -205,7 +225,11 @@ export default function ProdukClient({
       formData.set("harga_beli", String(parseRibuan(unitHargaBeli)));
       formData.set("harga_jual", String(parseRibuan(unitHargaJual)));
 
-      await createProductUnit(editing.id, formData);
+      if (editingUnitId) {
+        await updateProductUnit(editingUnitId, formData);
+      } else {
+        await createProductUnit(editing.id, formData);
+      }
       const data = await getProductUnits(editing.id);
       setUnits(data as ProductUnit[]);
       setUnitFormOpen(false);
@@ -270,6 +294,18 @@ export default function ProdukClient({
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
           />
         </div>
+        <select
+          value={currentCategory}
+          onChange={(e) => navigate({ page: 1, q: currentQuery, category: e.target.value })}
+          className="border border-gray-200 rounded-lg px-2 text-sm bg-white"
+        >
+          <option value="">Semua Kategori</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nama}
+            </option>
+          ))}
+        </select>
         <select
           value={pageSize}
           onChange={(e) => navigate({ page: 1, q: currentQuery, size: Number(e.target.value) })}
@@ -348,7 +384,7 @@ export default function ProdukClient({
                     {p.is_aktif ? "Aktif" : "Arsip"}
                   </span>
                 </td>
-                  <td className="p-3 space-x-2 whitespace-nowrap">
+                <td className="p-3 space-x-2 whitespace-nowrap">
                   <button onClick={() => openEdit(p)} className="text-brand text-xs">
                     Edit
                   </button>
@@ -578,7 +614,14 @@ export default function ProdukClient({
                               <td className="py-1">
                                 {u.harga_jual ? `Rp${u.harga_jual.toLocaleString("id-ID")}` : "-"}
                               </td>
-                              <td className="py-1">
+                              <td className="py-1 space-x-2 whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditUnit(u)}
+                                  className="text-brand"
+                                >
+                                  Edit
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteUnit(u.id)}
@@ -603,6 +646,9 @@ export default function ProdukClient({
                       </button>
                     ) : (
                       <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                        <p className="text-xs font-medium text-gray-500">
+                          {editingUnitId ? "Edit Satuan Besar" : "Satuan Besar Baru"}
+                        </p>
                         <div className="grid grid-cols-2 gap-2">
                           <select
                             value={unitSatuanPreset}
@@ -675,11 +721,11 @@ export default function ProdukClient({
                           </button>
                           <button
                             type="button"
-                            onClick={handleAddUnit}
+                            onClick={handleSaveUnit}
                             disabled={unitSaving}
                             className="bg-brand text-white rounded-lg py-1.5 text-xs disabled:opacity-50"
                           >
-                            {unitSaving ? "Menyimpan..." : "Simpan"}
+                            {unitSaving ? "Menyimpan..." : editingUnitId ? "Simpan Perubahan" : "Simpan"}
                           </button>
                         </div>
                       </div>

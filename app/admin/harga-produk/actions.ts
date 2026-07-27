@@ -4,19 +4,23 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { requireStaffRole } from "@/lib/auth-helpers";
 import { revalidatePath } from "next/cache";
 
-export async function getProductsForHarga(status: string = "aktif") {
+export async function getProductsForHarga(status: string = "aktif", categoryId: string = "") {
   await requireStaffRole(["super_admin", "admin"]);
   const supabase = createServiceRoleClient();
 
   let query = supabase
     .from("products")
-    .select("id, nama, satuan, kode_barcode, harga_modal, harga_jual, diskon_persen, stok, is_aktif")
+    .select("id, nama, satuan, kode_barcode, harga_modal, harga_jual, diskon_persen, stok, is_aktif, category_id")
     .order("nama");
 
   if (status === "aktif") {
     query = query.eq("is_aktif", true);
   } else if (status === "arsip") {
     query = query.eq("is_aktif", false);
+  }
+
+  if (categoryId) {
+    query = query.eq("category_id", categoryId);
   }
 
   const { data, error } = await query;
@@ -38,6 +42,15 @@ export async function getHargaProdukStatusCounts() {
     arsip: arsipCount ?? 0,
     semua: (aktifCount ?? 0) + (arsipCount ?? 0),
   };
+}
+
+export async function getCategoriesForHarga() {
+  await requireStaffRole(["super_admin", "admin"]);
+  const supabase = createServiceRoleClient();
+
+  const { data, error } = await supabase.from("categories").select("id, nama").order("urutan");
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 export async function updateHargaProduk(

@@ -143,6 +143,26 @@ export async function createProductUnit(productId: string, formData: FormData) {
   revalidatePath("/admin/produk");
 }
 
+export async function updateProductUnit(unitId: string, formData: FormData) {
+  const supabase = createServiceRoleClient();
+  const hargaJual = formData.get("harga_jual");
+
+  const { error } = await supabase
+    .from("product_units")
+    .update({
+      satuan: formData.get("satuan"),
+      konversi: Number(formData.get("konversi")),
+      kode_barcode: (formData.get("kode_barcode") as string)?.trim() || null,
+      harga_beli: Number(formData.get("harga_beli")) || 0,
+      harga_jual: hargaJual ? Number(hargaJual) : null,
+    })
+    .eq("id", unitId);
+
+  if (error) throw new Error(pesanErrorBarcode(error));
+
+  revalidatePath("/admin/produk");
+}
+
 export async function deleteProductUnit(id: string) {
   const supabase = createServiceRoleClient();
   const { error } = await supabase.from("product_units").delete().eq("id", id);

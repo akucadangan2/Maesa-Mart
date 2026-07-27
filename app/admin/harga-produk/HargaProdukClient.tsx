@@ -14,6 +14,12 @@ interface ProductRow {
   diskon_persen: number;
   stok: number;
   is_aktif: boolean;
+  category_id: string;
+}
+
+interface CategoryRow {
+  id: string;
+  nama: string;
 }
 
 const STATUS_TABS = [
@@ -25,10 +31,14 @@ const STATUS_TABS = [
 export default function HargaProdukClient({
   initialProducts,
   currentStatus,
+  currentCategory,
+  categories,
   statusCounts,
 }: {
   initialProducts: ProductRow[];
   currentStatus: string;
+  currentCategory: string;
+  categories: CategoryRow[];
   statusCounts: { aktif: number; arsip: number; semua: number };
 }) {
   const router = useRouter();
@@ -37,8 +47,12 @@ export default function HargaProdukClient({
   const [products, setProducts] = useState(initialProducts);
   const [saving, setSaving] = useState(false);
 
-  function navigate(status: string) {
-    router.push(`/admin/harga-produk?status=${status}`);
+  function navigate(status: string, category?: string) {
+    const sp = new URLSearchParams();
+    sp.set("status", status);
+    const cat = category ?? currentCategory;
+    if (cat) sp.set("category", cat);
+    router.push(`/admin/harga-produk?${sp.toString()}`);
   }
 
   function openEdit(p: ProductRow) {
@@ -92,6 +106,21 @@ export default function HargaProdukClient({
             </span>
           </button>
         ))}
+      </div>
+
+      <div className="flex mb-4">
+        <select
+          value={currentCategory}
+          onChange={(e) => navigate(currentStatus, e.target.value)}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+        >
+          <option value="">Semua Kategori</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nama}
+            </option>
+          ))}
+        </select>
       </div>
 
       <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
