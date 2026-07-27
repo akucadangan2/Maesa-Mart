@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Download, Bot, User, Loader2, X, Maximize2 } from "lucide-react";
+import { Search, Download, Bot, User, Loader2, X, ListChecks } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
   cekStokProduk,
@@ -22,6 +22,12 @@ interface ChatMessage {
   role: "user" | "bot";
   text: string;
   rows?: StokRow[];
+  showTerjual?: boolean;
+}
+
+interface ModalState {
+  messageId: string;
+  rows: StokRow[];
   showTerjual?: boolean;
 }
 
@@ -59,18 +65,16 @@ function exportExcel(rows: StokRow[], namaFile: string) {
   XLSX.writeFile(wb, `${namaFile}-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-function TabelStok({ rows, showTerjual }: { rows: StokRow[]; showTerjual?: boolean }) {
+function TabelPreview({ rows, showTerjual }: { rows: StokRow[]; showTerjual?: boolean }) {
   return (
     <table className="w-full text-xs min-w-[600px]">
-      <thead className="bg-gray-50 text-gray-600 sticky top-0">
+      <thead className="bg-gray-50 text-gray-600">
         <tr>
           <th className="p-2 text-left">Produk</th>
           <th className="p-2 text-left">Kategori</th>
           <th className="p-2 text-right">Stok</th>
           <th className="p-2 text-right">Qty Beli</th>
-          <th className="p-2 text-right">Harga Modal</th>
           <th className="p-2 text-right">Total</th>
-          {showTerjual && <th className="p-2 text-right">Terjual</th>}
         </tr>
       </thead>
       <tbody>
@@ -82,9 +86,7 @@ function TabelStok({ rows, showTerjual }: { rows: StokRow[]; showTerjual?: boole
               {r.stok} {r.satuan}
             </td>
             <td className="p-2 text-right font-medium text-brand">{r.qty_perlu_dibeli}</td>
-            <td className="p-2 text-right">{formatRp(r.harga_modal)}</td>
             <td className="p-2 text-right font-medium">{formatRp(r.total_harga_modal)}</td>
-            {showTerjual && <td className="p-2 text-right">{r.total_terjual ?? 0}</td>}
           </tr>
         ))}
       </tbody>
@@ -104,7 +106,8 @@ export default function AsistenStokClient({ kategoriList }: { kategoriList: Kate
   const [loading, setLoading] = useState(false);
   const [kategoriPickerOpen, setKategoriPickerOpen] = useState(false);
   const [periodePickerOpen, setPeriodePickerOpen] = useState(false);
-  const [modalData, setModalData] = useState<{ rows: StokRow[]; showTerjual?: boolean } | null>(null);
+  const [modalData, setModalData] = useState<ModalState | null>(null);
+  const [excludedByMessage, setExcludedByMessage] = useState<Record<string, Set<string>>>({});
 
   function tambahPesan(msg: ChatMessage) {
     setMessages((prev) => [...prev, msg]);
@@ -145,6 +148,31 @@ export default function AsistenStokClient({ kategoriList }: { kategoriList: Kate
     const q = query.trim();
     setQuery("");
     await jalankanAksi(`Cek stok: "${q}"`, () => cekStokProduk(q));
+  }
+
+  function bukaReview(messageId: string, rows: StokRow[], showTerjual?: boolean) {
+    setModalData({ messageId, rows, showTerjual });
+  }
+
+  function isExcluded(messageId: string, rowId: string) {
+    return excludedByMessage[messageId]?.has(rowId) ?? false;
+  }
+
+  function toggleExclude(messageId: string, rowId: string) {
+    setExcludedByMessage((prev) => {
+      const current = new Set(prev[messageId] ?? []);
+      if (current.has(rowId)) current.delete(rowId);
+      else current.add(rowId);
+      return { ...prev, [messageId]: current };
+    });
+  }
+
+  function pilihSemua(messageId: string) {
+    setExcludedByMessage((prev) => ({ ...prev, [messageId]: new Set() }));
+  }
+
+  function batalkanSemua(messageId: string, allIds: string[]) {
+    setExcludedByMessage((prev) => ({ ...prev, [messageId]: new Set(allIds) }));
   }
 
   return (
@@ -198,12 +226,11 @@ export default function AsistenStokClient({ kategoriList }: { kategoriList: Kate
         </button>
       </div>
 
-      {/* ===== Chat area (tinggi tetap, scroll di dalam) ===== */}
+      {/* ===== Chat area ===== */}
       <div className="h-[420px] overflow-y-auto bg-white border rounded-xl p-4 space-y-4 mb-3">
         {messages.map((m) => {
           const totalRows = m.rows?.length ?? 0;
           const previewRows = m.rows?.slice(0, PREVIEW_LIMIT) ?? [];
-          const adaLebihBanyak = totalRows > PREVIEW_LIMIT;
 
           return (
             <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -220,32 +247,21 @@ export default function AsistenStokClient({ kategoriList }: { kategoriList: Kate
 
                 {totalRows > 0 && (
                   <div className="mt-3 bg-white rounded-lg overflow-x-auto border">
-                    <TabelStok rows={previewRows} showTerjual={m.showTerjual} />
+                    <TabelPreview rows={previewRows} showTerjual={m.showTerjual} />
 
-                    {adaLebihBanyak && (
+                    {totalRows > PREVIEW_LIMIT && (
                       <div className="px-3 py-2 text-xs text-gray-500 border-t bg-gray-50">
                         Menampilkan {PREVIEW_LIMIT} dari {totalRows} produk.
                       </div>
                     )}
 
-                    <div className="flex border-t">
-                      {adaLebihBanyak && (
-                        <button
-                          onClick={() => setModalData({ rows: m.rows!, showTerjual: m.showTerjual })}
-                          className="flex-1 flex items-center justify-center gap-1.5 text-xs text-brand py-2 hover:bg-gray-50 border-r"
-                        >
-                          <Maximize2 size={13} />
-                          Lihat Semua ({totalRows})
-                        </button>
-                      )}
-                      <button
-                        onClick={() => exportExcel(m.rows!, "daftar-belanjaan")}
-                        className="flex-1 flex items-center justify-center gap-1.5 text-xs text-brand py-2 hover:bg-gray-50"
-                      >
-                        <Download size={13} />
-                        Export ke Excel
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => bukaReview(m.id, m.rows!, m.showTerjual)}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs text-brand py-2 border-t hover:bg-gray-50"
+                    >
+                      <ListChecks size={13} />
+                      Review & Export ke Excel ({totalRows} produk)
+                    </button>
                   </div>
                 )}
               </div>
@@ -278,28 +294,117 @@ export default function AsistenStokClient({ kategoriList }: { kategoriList: Kate
         </button>
       </div>
 
-      {/* ===== Modal Lihat Semua ===== */}
+      {/* ===== Modal Review sebelum Export ===== */}
       {modalData && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b shrink-0">
-              <h2 className="font-semibold">Daftar Lengkap ({modalData.rows.length} produk)</h2>
-              <button onClick={() => setModalData(null)} className="text-gray-400">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="overflow-auto flex-1">
-              <TabelStok rows={modalData.rows} showTerjual={modalData.showTerjual} />
-            </div>
-            <div className="p-3 border-t shrink-0">
-              <button
-                onClick={() => exportExcel(modalData.rows, "daftar-belanjaan")}
-                className="w-full flex items-center justify-center gap-1.5 bg-brand text-white text-sm py-2.5 rounded-lg"
-              >
-                <Download size={14} />
-                Export ke Excel ({modalData.rows.length} produk)
-              </button>
-            </div>
+            {(() => {
+              const allIds = modalData.rows.map((r) => r.id);
+              const excluded = excludedByMessage[modalData.messageId] ?? new Set();
+              const dipilih = modalData.rows.filter((r) => !excluded.has(r.id));
+              const totalHargaDipilih = dipilih.reduce((s, r) => s + r.total_harga_modal, 0);
+
+              return (
+                <>
+                  <div className="flex items-center justify-between p-4 border-b shrink-0">
+                    <div>
+                      <h2 className="font-semibold">Review Daftar Belanjaan</h2>
+                      <p className="text-xs text-gray-500">
+                        {dipilih.length} dari {modalData.rows.length} produk dipilih · Total{" "}
+                        {formatRp(totalHargaDipilih)}
+                      </p>
+                    </div>
+                    <button onClick={() => setModalData(null)} className="text-gray-400">
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2 px-4 py-2 border-b shrink-0">
+                    <button
+                      onClick={() => pilihSemua(modalData.messageId)}
+                      className="text-xs text-brand underline"
+                    >
+                      Pilih Semua
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={() => batalkanSemua(modalData.messageId, allIds)}
+                      className="text-xs text-red-500 underline"
+                    >
+                      Batalkan Semua
+                    </button>
+                  </div>
+
+                  <div className="overflow-auto flex-1">
+                    <table className="w-full text-xs min-w-[650px]">
+                      <thead className="bg-gray-50 text-gray-600 sticky top-0">
+                        <tr>
+                          <th className="p-2 w-8"></th>
+                          <th className="p-2 text-left">Produk</th>
+                          <th className="p-2 text-left">Kategori</th>
+                          <th className="p-2 text-right">Stok</th>
+                          <th className="p-2 text-right">Qty Beli</th>
+                          <th className="p-2 text-right">Harga Modal</th>
+                          <th className="p-2 text-right">Total</th>
+                          {modalData.showTerjual && <th className="p-2 text-right">Terjual</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {modalData.rows.map((r) => {
+                          const dicoret = excluded.has(r.id);
+                          return (
+                            <tr key={r.id} className={`border-t ${dicoret ? "opacity-40" : ""}`}>
+                              <td className="p-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={!dicoret}
+                                  onChange={() => toggleExclude(modalData.messageId, r.id)}
+                                />
+                              </td>
+                              <td className="p-2 text-gray-800">{r.nama}</td>
+                              <td className="p-2 text-gray-500">{r.kategori}</td>
+                              <td className="p-2 text-right">
+                                {r.stok} {r.satuan}
+                              </td>
+                              <td className="p-2 text-right font-medium text-brand">
+                                {r.qty_perlu_dibeli}
+                              </td>
+                              <td className="p-2 text-right">{formatRp(r.harga_modal)}</td>
+                              <td className="p-2 text-right font-medium">
+                                {formatRp(r.total_harga_modal)}
+                              </td>
+                              {modalData.showTerjual && (
+                                <td className="p-2 text-right">{r.total_terjual ?? 0}</td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex gap-2 p-3 border-t shrink-0">
+                    <button
+                      onClick={() => setModalData(null)}
+                      className="flex-1 border rounded-lg py-2.5 text-sm text-gray-600"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      onClick={() => {
+                        exportExcel(dipilih, "daftar-belanjaan");
+                        setModalData(null);
+                      }}
+                      disabled={dipilih.length === 0}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-brand text-white text-sm py-2.5 rounded-lg disabled:opacity-40"
+                    >
+                      <Download size={14} />
+                      Export ({dipilih.length})
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
