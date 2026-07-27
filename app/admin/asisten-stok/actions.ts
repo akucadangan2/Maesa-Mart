@@ -163,7 +163,7 @@ export async function produkPalingLaku(periode: Periode): Promise<StokRow[]> {
     .select(PRODUCT_SELECT)
     .in("id", productIds);
 
-  const totalMap = new Map(agg.map((a: any) => [a.product_id, Number(a.total_qty)]));
+  const totalMap = new Map<string, number>(agg.map((a: any) => [a.product_id, Number(a.total_qty)]));
   const ordered = (products ?? []).sort(
     (a, b) => (totalMap.get(b.id) ?? 0) - (totalMap.get(a.id) ?? 0)
   );
@@ -191,7 +191,7 @@ export async function produkPalingJarang(periode: Periode): Promise<StokRow[]> {
     .select(PRODUCT_SELECT)
     .in("id", productIds);
 
-  const totalMap = new Map(agg.map((a: any) => [a.product_id, Number(a.total_qty)]));
+  const totalMap = new Map<string, number>(agg.map((a: any) => [a.product_id, Number(a.total_qty)]));
   const ordered = (products ?? []).sort(
     (a, b) => (totalMap.get(a.id) ?? 0) - (totalMap.get(b.id) ?? 0)
   );
