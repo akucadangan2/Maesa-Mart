@@ -20,6 +20,8 @@ const ADMIN_ROUTE_RULES: { route: string; roles: string[] }[] = [
   { route: "/admin/qr", roles: ["super_admin"] },
   { route: "/admin/bank", roles: ["super_admin"] },
   { route: "/admin/pengguna", roles: ["super_admin"] },
+  { route: "/admin/asisten-stok", roles: ["super_admin", "admin"] },
+  { route: "/admin/pengaturan-toko", roles: ["super_admin", "admin"] },
 ];
 
 function getAllowedRolesForAdminPath(pathname: string): string[] {
