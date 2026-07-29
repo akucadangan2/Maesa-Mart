@@ -28,6 +28,7 @@ export async function updateSupplier(id: string, formData: FormData) {
       telepon: (formData.get("telepon") as string) || null,
     })
     .eq("id", id);
+    
 
   if (error) throw new Error(error.message);
   revalidatePath("/admin/supplier");
