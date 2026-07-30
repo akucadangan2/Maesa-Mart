@@ -70,6 +70,8 @@ export default function ProdukClient({
 
   const [hargaModal, setHargaModal] = useState("");
   const [hargaJual, setHargaJual] = useState("");
+  const [qtyGrosir, setQtyGrosir] = useState("");
+  const [hargaGrosir, setHargaGrosir] = useState("");
 
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
@@ -83,6 +85,8 @@ export default function ProdukClient({
   const [unitBarcode, setUnitBarcode] = useState("");
   const [unitHargaBeli, setUnitHargaBeli] = useState("");
   const [unitHargaJual, setUnitHargaJual] = useState("");
+  const [unitQtyGrosir, setUnitQtyGrosir] = useState("");
+  const [unitHargaGrosir, setUnitHargaGrosir] = useState("");
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
 
   const isCustomSatuan = unitSatuanPreset === "lainnya";
@@ -116,6 +120,8 @@ export default function ProdukClient({
     setUnitBarcode("");
     setUnitHargaBeli("");
     setUnitHargaJual("");
+    setUnitQtyGrosir("");
+    setUnitHargaGrosir("");
     setUnitErrorMsg(null);
     setEditingUnitId(null);
   }
@@ -129,6 +135,8 @@ export default function ProdukClient({
     setUnitBarcode(u.kode_barcode ?? "");
     setUnitHargaBeli(formatRibuan(String(u.harga_beli)));
     setUnitHargaJual(u.harga_jual ? formatRibuan(String(u.harga_jual)) : "");
+    setUnitQtyGrosir(u.qty_grosir ? String(u.qty_grosir) : "");
+    setUnitHargaGrosir(u.harga_grosir ? formatRibuan(String(u.harga_grosir)) : "");
     setUnitErrorMsg(null);
     setUnitFormOpen(true);
   }
@@ -138,6 +146,8 @@ export default function ProdukClient({
     setErrorMsg(null);
     setHargaModal("");
     setHargaJual("");
+    setQtyGrosir("");
+    setHargaGrosir("");
     setUnits([]);
     setUnitFormOpen(false);
     resetUnitForm();
@@ -149,6 +159,8 @@ export default function ProdukClient({
     setErrorMsg(null);
     setHargaModal(formatRibuan(String(product.harga_modal)));
     setHargaJual(formatRibuan(String(product.harga_jual)));
+    setQtyGrosir(product.qty_grosir ? String(product.qty_grosir) : "");
+    setHargaGrosir(product.harga_grosir ? formatRibuan(String(product.harga_grosir)) : "");
     setUnitFormOpen(false);
     resetUnitForm();
     setFormOpen(true);
@@ -167,6 +179,8 @@ export default function ProdukClient({
     const formData = new FormData(e.currentTarget);
     formData.set("harga_modal", String(parseRibuan(hargaModal)));
     formData.set("harga_jual", String(parseRibuan(hargaJual)));
+    formData.set("qty_grosir", String(Number(qtyGrosir) || 0));
+    formData.set("harga_grosir", String(parseRibuan(hargaGrosir)));
     try {
       if (editing) {
         await updateProduct(editing.id, formData);
@@ -224,6 +238,8 @@ export default function ProdukClient({
       formData.set("kode_barcode", unitBarcode.trim());
       formData.set("harga_beli", String(parseRibuan(unitHargaBeli)));
       formData.set("harga_jual", String(parseRibuan(unitHargaJual)));
+      formData.set("qty_grosir", String(Number(unitQtyGrosir) || 0));
+      formData.set("harga_grosir", String(parseRibuan(unitHargaGrosir)));
 
       if (editingUnitId) {
         await updateProductUnit(editingUnitId, formData);
@@ -362,6 +378,11 @@ export default function ProdukClient({
                   {p.diskon_persen > 0 && (
                     <div className="text-xs text-brand">
                       jadi Rp{hargaEfektif(p).toLocaleString("id-ID")}
+                    </div>
+                  )}
+                  {p.qty_grosir > 0 && (
+                    <div className="text-[10px] text-gray-400">
+                      &gt;{p.qty_grosir}: Rp{p.harga_grosir.toLocaleString("id-ID")}
                     </div>
                   )}
                 </td>
@@ -542,6 +563,37 @@ export default function ProdukClient({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
+                    <label className="text-sm font-medium block mb-1">Qty Grosir (satuan eceran)</label>
+                    <input
+                      type="number"
+                      value={qtyGrosir}
+                      onChange={(e) => setQtyGrosir(e.target.value)}
+                      placeholder="0 = tanpa harga grosir"
+                      min={0}
+                      className="border rounded-lg w-full px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-1">Harga Grosir (per pcs)</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={hargaGrosir}
+                      onChange={(e) => setHargaGrosir(formatRibuan(e.target.value))}
+                      placeholder="0"
+                      className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                </div>
+                {Number(qtyGrosir) > 0 && (
+                  <p className="text-xs text-gray-400 -mt-2">
+                    Beli lebih dari {qtyGrosir} {editing?.satuan ?? "pcs"} → harga otomatis jadi Rp
+                    {parseRibuan(hargaGrosir).toLocaleString("id-ID")}/{editing?.satuan ?? "pcs"}.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
                     <label className="text-sm font-medium block mb-1">Diskon (%)</label>
                     <input
                       type="number"
@@ -613,6 +665,11 @@ export default function ProdukClient({
                               <td className="py-1">Rp{u.harga_beli.toLocaleString("id-ID")}</td>
                               <td className="py-1">
                                 {u.harga_jual ? `Rp${u.harga_jual.toLocaleString("id-ID")}` : "-"}
+                                {u.qty_grosir > 0 && (
+                                  <div className="text-[10px] text-brand">
+                                    &gt;{u.qty_grosir}: Rp{u.harga_grosir.toLocaleString("id-ID")}
+                                  </div>
+                                )}
                               </td>
                               <td className="py-1 space-x-2 whitespace-nowrap">
                                 <button
@@ -698,6 +755,31 @@ export default function ProdukClient({
                             className="border rounded-lg px-2 py-1.5 text-xs font-mono"
                           />
                         </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={unitQtyGrosir}
+                            onChange={(e) => setUnitQtyGrosir(e.target.value)}
+                            placeholder="Qty grosir (0=off)"
+                            className="border rounded-lg px-2 py-1.5 text-xs"
+                          />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={unitHargaGrosir}
+                            onChange={(e) => setUnitHargaGrosir(formatRibuan(e.target.value))}
+                            placeholder="Harga grosir/satuan"
+                            className="border rounded-lg px-2 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                        {Number(unitQtyGrosir) > 0 && (
+                          <p className="text-[11px] text-gray-400">
+                            Beli lebih dari {unitQtyGrosir} {finalSatuanValue || "satuan"} → jadi Rp
+                            {parseRibuan(unitHargaGrosir).toLocaleString("id-ID")}/{finalSatuanValue || "satuan"}.
+                          </p>
+                        )}
 
                         <input
                           value={unitBarcode}

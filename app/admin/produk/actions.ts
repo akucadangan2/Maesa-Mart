@@ -44,6 +44,8 @@ export async function createProduct(formData: FormData) {
     harga_modal: Number(formData.get("harga_modal")),
     harga_jual: Number(formData.get("harga_jual")),
     diskon_persen: Number(formData.get("diskon_persen")) || 0,
+    qty_grosir: Number(formData.get("qty_grosir")) || 0,
+    harga_grosir: Number(formData.get("harga_grosir")) || 0,
     stok: Number(formData.get("stok")),
     kode_barcode: kodeBarcode,
     foto_url,
@@ -69,6 +71,8 @@ export async function updateProduct(id: string, formData: FormData) {
     harga_modal: Number(formData.get("harga_modal")),
     harga_jual: Number(formData.get("harga_jual")),
     diskon_persen: Number(formData.get("diskon_persen")) || 0,
+    qty_grosir: Number(formData.get("qty_grosir")) || 0,
+    harga_grosir: Number(formData.get("harga_grosir")) || 0,
     stok: Number(formData.get("stok")),
     kode_barcode: kodeBarcode,
     is_aktif: formData.get("is_aktif") === "true",
@@ -136,6 +140,8 @@ export async function createProductUnit(productId: string, formData: FormData) {
     kode_barcode: (formData.get("kode_barcode") as string)?.trim() || null,
     harga_beli: Number(formData.get("harga_beli")) || 0,
     harga_jual: hargaJual ? Number(hargaJual) : null,
+    qty_grosir: Number(formData.get("qty_grosir")) || 0,
+    harga_grosir: Number(formData.get("harga_grosir")) || 0,
   });
 
   if (error) throw new Error(pesanErrorBarcode(error));
@@ -155,6 +161,8 @@ export async function updateProductUnit(unitId: string, formData: FormData) {
       kode_barcode: (formData.get("kode_barcode") as string)?.trim() || null,
       harga_beli: Number(formData.get("harga_beli")) || 0,
       harga_jual: hargaJual ? Number(hargaJual) : null,
+      qty_grosir: Number(formData.get("qty_grosir")) || 0,
+      harga_grosir: Number(formData.get("harga_grosir")) || 0,
     })
     .eq("id", unitId);
 

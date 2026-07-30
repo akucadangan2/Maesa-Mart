@@ -9,6 +9,8 @@ export interface KasirUnitOption {
   konversi: number;
   harga_jual: number;
   harga_modal_per_eceran: number;
+  qty_grosir: number;
+  harga_grosir: number;
 }
 
 export interface KasirSearchResult {
@@ -25,7 +27,7 @@ function hitungHargaEfektif(hargaJual: number, diskonPersen: number) {
 }
 
 const PRODUCT_SELECT =
-  "id, nama, satuan, harga_jual, harga_modal, diskon_persen, stok, foto_url, kode_barcode, is_aktif, product_units(id, satuan, konversi, harga_jual, harga_beli, kode_barcode)";
+  "id, nama, satuan, harga_jual, harga_modal, diskon_persen, qty_grosir, harga_grosir, stok, foto_url, kode_barcode, is_aktif, product_units(id, satuan, konversi, harga_jual, harga_beli, kode_barcode, qty_grosir, harga_grosir)";
 
 function buildResult(product: any, matchedUnitKey: string): KasirSearchResult {
   const baseUnit: KasirUnitOption = {
@@ -34,6 +36,8 @@ function buildResult(product: any, matchedUnitKey: string): KasirSearchResult {
     konversi: 1,
     harga_jual: hitungHargaEfektif(product.harga_jual, product.diskon_persen),
     harga_modal_per_eceran: product.harga_modal,
+    qty_grosir: product.qty_grosir ?? 0,
+    harga_grosir: product.harga_grosir ?? 0,
   };
 
   const extraUnits: KasirUnitOption[] = (product.product_units ?? [])
@@ -44,6 +48,8 @@ function buildResult(product: any, matchedUnitKey: string): KasirSearchResult {
       konversi: u.konversi,
       harga_jual: u.harga_jual,
       harga_modal_per_eceran: u.harga_beli / u.konversi,
+      qty_grosir: u.qty_grosir ?? 0,
+      harga_grosir: u.harga_grosir ?? 0,
     }));
 
   return {

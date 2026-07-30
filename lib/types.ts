@@ -22,6 +22,8 @@ export interface Product {
   harga_modal: number;
   harga_jual: number;
   diskon_persen: number;
+  qty_grosir: number;
+  harga_grosir: number;
   stok: number;
   foto_url: string | null;
   kode_barcode: string | null;
@@ -119,6 +121,8 @@ export interface ProductUnit {
   kode_barcode: string | null;
   harga_beli: number;
   harga_jual: number | null;
+  qty_grosir: number;
+  harga_grosir: number;
   created_at: string;
 }
 

@@ -57,6 +57,10 @@ function selectedUnit(line: CartLine): KasirUnitOption {
   return line.units.find((u) => unitKeyOf(u) === line.selectedUnitKey) ?? line.units[0];
 }
 
+function hargaEfektifUnit(unit: KasirUnitOption, qty: number): number {
+  return unit.qty_grosir > 0 && qty > unit.qty_grosir ? unit.harga_grosir : unit.harga_jual;
+}
+
 function formatRibuan(value: string) {
   const digits = value.replace(/\D/g, "");
   if (!digits) return "";
@@ -284,7 +288,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
     setCart((prev) => prev.filter((_, i) => i !== index));
   }
 
-  const subtotal = cart.reduce((sum, line) => sum + selectedUnit(line).harga_jual * line.qty, 0);
+  const subtotal = cart.reduce(
+    (sum, line) => sum + hargaEfektifUnit(selectedUnit(line), line.qty) * line.qty,
+    0
+  );
   const diskonNum = parseRibuan(diskonManual);
 
   const diskonMembership = (() => {
@@ -377,7 +384,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
             nama_produk: line.nama_produk,
             satuan: unit.satuan,
             konversi: unit.konversi,
-            harga_jual: unit.harga_jual,
+            harga_jual: hargaEfektifUnit(unit, line.qty),
             harga_modal_per_eceran: unit.harga_modal_per_eceran,
             qty: line.qty,
           };
@@ -557,8 +564,11 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                       <div>
                         <div className="font-medium">{r.nama_produk}</div>
                         <div className="text-xs text-gray-500">
-                          {unit.satuan} · Rp{unit.harga_jual.toLocaleString("id-ID")} · stok{" "}
-                          {r.stok_tersedia_eceran}
+                          {unit.satuan} · Rp
+                          {hargaEfektifUnit(unit, Math.max(1, Number(jumlahScan) || 1)).toLocaleString(
+                            "id-ID"
+                          )}{" "}
+                          · stok {r.stok_tersedia_eceran}
                         </div>
                       </div>
                       <span className="text-xs text-brand">+ Tambah</span>
@@ -638,7 +648,10 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                           )}
                         </td>
                         <td className="p-2.5 text-right font-mono text-xs">
-                          {unit.harga_jual.toLocaleString("id-ID")}
+                          {hargaEfektifUnit(unit, line.qty).toLocaleString("id-ID")}
+                          {unit.qty_grosir > 0 && line.qty > unit.qty_grosir && (
+                            <div className="text-[10px] text-brand">grosir</div>
+                          )}
                         </td>
                         <td className="p-2.5">
                           <div className="flex items-center justify-center gap-1">
@@ -658,7 +671,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                           </div>
                         </td>
                         <td className="p-2.5 text-right font-mono text-xs font-semibold">
-                          {(unit.harga_jual * line.qty).toLocaleString("id-ID")}
+                          {(hargaEfektifUnit(unit, line.qty) * line.qty).toLocaleString("id-ID")}
                         </td>
                         <td className="p-2.5 text-center">
                           <button

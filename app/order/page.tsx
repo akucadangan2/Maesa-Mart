@@ -32,9 +32,13 @@ interface UnitOption {
   id: string | null;
   satuan: string;
   hargaJual: number;
+  hargaNormal: number;
+  hargaGrosir: number;
+  qtyGrosir: number;
   hargaModalPerEceran: number;
   konversi: number;
   adaDiskonEceran: boolean;
+  isGrosir: boolean;
 }
 
 function hargaEfektif(p: Product) {
@@ -43,23 +47,41 @@ function hargaEfektif(p: Product) {
     : p.harga_jual;
 }
 
-function getUnitOptions(product: Product, unitsMap: Record<string, ProductUnit[]>): UnitOption[] {
+function getUnitOptions(
+  product: Product,
+  unitsMap: Record<string, ProductUnit[]>,
+  qty: number = 1
+): UnitOption[] {
+  const hargaNormalBase = hargaEfektif(product);
+  const grosirAktifBase = product.qty_grosir > 0 && qty > product.qty_grosir;
   const base: UnitOption = {
     id: null,
     satuan: product.satuan,
-    hargaJual: hargaEfektif(product),
+    hargaJual: grosirAktifBase ? product.harga_grosir : hargaNormalBase,
+    hargaNormal: hargaNormalBase,
+    hargaGrosir: product.harga_grosir,
+    qtyGrosir: product.qty_grosir,
     hargaModalPerEceran: product.harga_modal,
     konversi: 1,
     adaDiskonEceran: product.diskon_persen > 0,
+    isGrosir: grosirAktifBase,
   };
-  const alts: UnitOption[] = (unitsMap[product.id] ?? []).map((u) => ({
-    id: u.id,
-    satuan: u.satuan,
-    hargaJual: u.harga_jual as number,
-    hargaModalPerEceran: u.harga_beli / u.konversi,
-    konversi: u.konversi,
-    adaDiskonEceran: false,
-  }));
+  const alts: UnitOption[] = (unitsMap[product.id] ?? []).map((u) => {
+    const hargaNormalUnit = u.harga_jual as number;
+    const grosirAktifUnit = u.qty_grosir > 0 && qty > u.qty_grosir;
+    return {
+      id: u.id,
+      satuan: u.satuan,
+      hargaJual: grosirAktifUnit ? u.harga_grosir : hargaNormalUnit,
+      hargaNormal: hargaNormalUnit,
+      hargaGrosir: u.harga_grosir,
+      qtyGrosir: u.qty_grosir,
+      hargaModalPerEceran: u.harga_beli / u.konversi,
+      konversi: u.konversi,
+      adaDiskonEceran: false,
+      isGrosir: grosirAktifUnit,
+    };
+  });
   return [base, ...alts];
 }
 
@@ -150,7 +172,7 @@ export default function OrderPage() {
   const isLoggedIn = !!customerId;
 
   function unitOptionForCartItem(item: CartItem): UnitOption {
-    const options = getUnitOptions(item.product, productUnitsMap);
+    const options = getUnitOptions(item.product, productUnitsMap, item.qty);
     return options.find((o) => o.id === item.unitId) ?? options[0];
   }
 
@@ -268,7 +290,7 @@ export default function OrderPage() {
       return;
     }
     if (!isLoggedIn && (!guestNama.trim() || !guestNoHp.trim())) {
-      setErrorMsg("Isi nama dan nomor HP dulu, biar bisa dihubungi soal pesanannya.");
+      setErrorMsg("Isi nama dan nomor HP dulu, biar bisa dihubungi soal pesananmu.");
       return;
     }
     if (metodeAmbil === "diantar" && !alamatPengantaran.trim()) {
@@ -565,6 +587,9 @@ export default function OrderPage() {
                         <div className="text-xs font-mono text-ink-soft">
                           Rp{(unit.hargaJual * item.qty).toLocaleString("id-ID")}
                         </div>
+                        {unit.isGrosir && (
+                          <div className="text-[10px] text-brand">Harga grosir aktif</div>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button
@@ -792,7 +817,7 @@ function ProductCard({
   const [qty, setQty] = useState(1);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
-  const options = getUnitOptions(product, { [product.id]: units });
+  const options = getUnitOptions(product, { [product.id]: units }, qty);
   const selected = options.find((o) => o.id === selectedUnitId) ?? options[0];
   const adaDiskonBadge = product.diskon_persen > 0;
 
@@ -836,8 +861,17 @@ function ProductCard({
           <div className="text-xs text-ink-soft mb-2">{product.satuan}</div>
         )}
 
-        {selected.id === null && selected.adaDiskonEceran ? (
-          <div className="mb-3 flex items-baseline gap-2 flex-wrap">
+        {selected.isGrosir ? (
+          <div className="mb-1 flex items-baseline gap-2 flex-wrap">
+            <span className="font-mono text-xs text-ink-soft line-through">
+              Rp{selected.hargaNormal.toLocaleString("id-ID")}
+            </span>
+            <span className="font-mono text-sm font-semibold text-brand">
+              Rp{selected.hargaJual.toLocaleString("id-ID")}
+            </span>
+          </div>
+        ) : selected.id === null && selected.adaDiskonEceran ? (
+          <div className="mb-1 flex items-baseline gap-2 flex-wrap">
             <span className="font-mono text-xs text-ink-soft line-through">
               Rp{product.harga_jual.toLocaleString("id-ID")}
             </span>
@@ -846,9 +880,16 @@ function ProductCard({
             </span>
           </div>
         ) : (
-          <div className="font-mono text-sm font-semibold text-brand mb-3">
+          <div className="font-mono text-sm font-semibold text-brand mb-1">
             Rp{selected.hargaJual.toLocaleString("id-ID")}
           </div>
+        )}
+        {selected.qtyGrosir > 0 && (
+          <p className="text-[10px] text-ink-soft mb-2">
+            {selected.isGrosir
+              ? `Harga grosir aktif (beli lebih dari ${selected.qtyGrosir}).`
+              : `Beli lebih dari ${selected.qtyGrosir} ${selected.satuan} jadi Rp${selected.hargaGrosir.toLocaleString("id-ID")}/${selected.satuan}.`}
+          </p>
         )}
 
         <div className="mt-auto space-y-2">
