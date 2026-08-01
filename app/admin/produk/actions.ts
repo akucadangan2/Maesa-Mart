@@ -190,3 +190,77 @@ export async function toggleProductActive(id: string, isAktif: boolean) {
   revalidatePath("/admin/produk");
   revalidatePath("/order");
 }
+
+// ===== Tingkatan harga grosir (product_harga_tier) =====
+
+// 1 baris = 1 tingkatan. product_unit_id = null berarti tier ini buat
+// satuan kecil/eceran produk itu; kalau diisi, berarti tier khusus buat
+// satuan besar tersebut.
+export interface HargaTierRow {
+  id: string;
+  product_id: string;
+  product_unit_id: string | null;
+  qty_minimum: number;
+  harga: number;
+}
+
+function pesanErrorTier(error: { message: string; code?: string }) {
+  if (error.code === "23505" || error.message.includes("duplicate key")) {
+    return "Sudah ada tingkatan grosir dengan qty minimum yang sama untuk satuan ini.";
+  }
+  return error.message;
+}
+
+export async function getHargaTiers(productId: string): Promise<HargaTierRow[]> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("product_harga_tier")
+    .select("*")
+    .eq("product_id", productId)
+    .order("qty_minimum");
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function createHargaTier(
+  productId: string,
+  unitId: string | null,
+  qtyMinimum: number,
+  harga: number
+) {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase.from("product_harga_tier").insert({
+    product_id: productId,
+    product_unit_id: unitId,
+    qty_minimum: qtyMinimum,
+    harga,
+  });
+
+  if (error) throw new Error(pesanErrorTier(error));
+
+  revalidatePath("/admin/produk");
+  revalidatePath("/order");
+}
+
+export async function updateHargaTier(tierId: string, qtyMinimum: number, harga: number) {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from("product_harga_tier")
+    .update({ qty_minimum: qtyMinimum, harga })
+    .eq("id", tierId);
+
+  if (error) throw new Error(pesanErrorTier(error));
+
+  revalidatePath("/admin/produk");
+  revalidatePath("/order");
+}
+
+export async function deleteHargaTier(tierId: string) {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase.from("product_harga_tier").delete().eq("id", tierId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/produk");
+  revalidatePath("/order");
+}

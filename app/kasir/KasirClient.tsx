@@ -20,6 +20,7 @@ import {
   getOnlineOrderDetail,
   type KasirSearchResult,
   type KasirUnitOption,
+  type KasirHargaTier,
 } from "./actions";
 import { METODE_BAYAR_OPTIONS } from "./metodeBayar";
 import { useKasirHybrid, getLocalServerUrl, setLocalServerUrlPref } from "./hooks/useKasirHybrid";
@@ -57,8 +58,27 @@ function selectedUnit(line: CartLine): KasirUnitOption {
   return line.units.find((u) => unitKeyOf(u) === line.selectedUnitKey) ?? line.units[0];
 }
 
-function hargaEfektifUnit(unit: KasirUnitOption, qty: number): number {
-  return unit.qty_grosir > 0 && qty > unit.qty_grosir ? unit.harga_grosir : unit.harga_jual;
+interface TierPilihan {
+  harga: number;
+  isGrosir: boolean;
+  tierAktif: KasirHargaTier | null;
+  tierBerikutnya: KasirHargaTier | null;
+}
+
+function pilihHargaUnit(unit: KasirUnitOption, qty: number): TierPilihan {
+  const eligible = unit.tiers.filter((t) => qty >= t.qty_minimum);
+  const tierAktif =
+    eligible.length > 0 ? eligible.reduce((a, b) => (b.qty_minimum > a.qty_minimum ? b : a)) : null;
+  const belumTercapai = unit.tiers
+    .filter((t) => qty < t.qty_minimum)
+    .sort((a, b) => a.qty_minimum - b.qty_minimum);
+  const tierBerikutnya = belumTercapai.length > 0 ? belumTercapai[0] : null;
+  return {
+    harga: tierAktif ? tierAktif.harga : unit.harga_jual,
+    isGrosir: !!tierAktif,
+    tierAktif,
+    tierBerikutnya,
+  };
 }
 
 function formatRibuan(value: string) {
@@ -289,7 +309,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
   }
 
   const subtotal = cart.reduce(
-    (sum, line) => sum + hargaEfektifUnit(selectedUnit(line), line.qty) * line.qty,
+    (sum, line) => sum + pilihHargaUnit(selectedUnit(line), line.qty).harga * line.qty,
     0
   );
   const diskonNum = parseRibuan(diskonManual);
@@ -384,7 +404,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
             nama_produk: line.nama_produk,
             satuan: unit.satuan,
             konversi: unit.konversi,
-            harga_jual: hargaEfektifUnit(unit, line.qty),
+            harga_jual: pilihHargaUnit(unit, line.qty).harga,
             harga_modal_per_eceran: unit.harga_modal_per_eceran,
             qty: line.qty,
           };
@@ -565,7 +585,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                         <div className="font-medium">{r.nama_produk}</div>
                         <div className="text-xs text-gray-500">
                           {unit.satuan} · Rp
-                          {hargaEfektifUnit(unit, Math.max(1, Number(jumlahScan) || 1)).toLocaleString(
+                          {pilihHargaUnit(unit, Math.max(1, Number(jumlahScan) || 1)).harga.toLocaleString(
                             "id-ID"
                           )}{" "}
                           · stok {r.stok_tersedia_eceran}
@@ -648,8 +668,8 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                           )}
                         </td>
                         <td className="p-2.5 text-right font-mono text-xs">
-                          {hargaEfektifUnit(unit, line.qty).toLocaleString("id-ID")}
-                          {unit.qty_grosir > 0 && line.qty > unit.qty_grosir && (
+                          {pilihHargaUnit(unit, line.qty).harga.toLocaleString("id-ID")}
+                          {pilihHargaUnit(unit, line.qty).isGrosir && (
                             <div className="text-[10px] text-brand">grosir</div>
                           )}
                         </td>
@@ -671,7 +691,7 @@ export default function KasirClient({ staffId, staffNama }: { staffId: string; s
                           </div>
                         </td>
                         <td className="p-2.5 text-right font-mono text-xs font-semibold">
-                          {(hargaEfektifUnit(unit, line.qty) * line.qty).toLocaleString("id-ID")}
+                          {(pilihHargaUnit(unit, line.qty).harga * line.qty).toLocaleString("id-ID")}
                         </td>
                         <td className="p-2.5 text-center">
                           <button

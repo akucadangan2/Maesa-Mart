@@ -13,6 +13,11 @@ import {
   createProductUnit,
   updateProductUnit,
   deleteProductUnit,
+  getHargaTiers,
+  createHargaTier,
+  updateHargaTier,
+  deleteHargaTier,
+  type HargaTierRow,
 } from "./actions";
 
 const PRESET_SATUAN = ["DOS", "PAK", "BOX", "RENCENG", "IKAT", "KARUNG", "KRAT", "ZAK", "LUSIN", "GTG"];
@@ -70,8 +75,7 @@ export default function ProdukClient({
 
   const [hargaModal, setHargaModal] = useState("");
   const [hargaJual, setHargaJual] = useState("");
-  const [qtyGrosir, setQtyGrosir] = useState("");
-  const [hargaGrosir, setHargaGrosir] = useState("");
+  const [tiers, setTiers] = useState<HargaTierRow[]>([]);
 
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
@@ -85,8 +89,6 @@ export default function ProdukClient({
   const [unitBarcode, setUnitBarcode] = useState("");
   const [unitHargaBeli, setUnitHargaBeli] = useState("");
   const [unitHargaJual, setUnitHargaJual] = useState("");
-  const [unitQtyGrosir, setUnitQtyGrosir] = useState("");
-  const [unitHargaGrosir, setUnitHargaGrosir] = useState("");
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
 
   const isCustomSatuan = unitSatuanPreset === "lainnya";
@@ -120,8 +122,6 @@ export default function ProdukClient({
     setUnitBarcode("");
     setUnitHargaBeli("");
     setUnitHargaJual("");
-    setUnitQtyGrosir("");
-    setUnitHargaGrosir("");
     setUnitErrorMsg(null);
     setEditingUnitId(null);
   }
@@ -135,8 +135,6 @@ export default function ProdukClient({
     setUnitBarcode(u.kode_barcode ?? "");
     setUnitHargaBeli(formatRibuan(String(u.harga_beli)));
     setUnitHargaJual(u.harga_jual ? formatRibuan(String(u.harga_jual)) : "");
-    setUnitQtyGrosir(u.qty_grosir ? String(u.qty_grosir) : "");
-    setUnitHargaGrosir(u.harga_grosir ? formatRibuan(String(u.harga_grosir)) : "");
     setUnitErrorMsg(null);
     setUnitFormOpen(true);
   }
@@ -146,8 +144,7 @@ export default function ProdukClient({
     setErrorMsg(null);
     setHargaModal("");
     setHargaJual("");
-    setQtyGrosir("");
-    setHargaGrosir("");
+    setTiers([]);
     setUnits([]);
     setUnitFormOpen(false);
     resetUnitForm();
@@ -159,15 +156,17 @@ export default function ProdukClient({
     setErrorMsg(null);
     setHargaModal(formatRibuan(String(product.harga_modal)));
     setHargaJual(formatRibuan(String(product.harga_jual)));
-    setQtyGrosir(product.qty_grosir ? String(product.qty_grosir) : "");
-    setHargaGrosir(product.harga_grosir ? formatRibuan(String(product.harga_grosir)) : "");
     setUnitFormOpen(false);
     resetUnitForm();
     setFormOpen(true);
     setLoadingUnits(true);
     try {
-      const data = await getProductUnits(product.id);
-      setUnits(data as ProductUnit[]);
+      const [unitsData, tiersData] = await Promise.all([
+        getProductUnits(product.id),
+        getHargaTiers(product.id),
+      ]);
+      setUnits(unitsData as ProductUnit[]);
+      setTiers(tiersData);
     } finally {
       setLoadingUnits(false);
     }
@@ -179,8 +178,6 @@ export default function ProdukClient({
     const formData = new FormData(e.currentTarget);
     formData.set("harga_modal", String(parseRibuan(hargaModal)));
     formData.set("harga_jual", String(parseRibuan(hargaJual)));
-    formData.set("qty_grosir", String(Number(qtyGrosir) || 0));
-    formData.set("harga_grosir", String(parseRibuan(hargaGrosir)));
     try {
       if (editing) {
         await updateProduct(editing.id, formData);
@@ -238,8 +235,6 @@ export default function ProdukClient({
       formData.set("kode_barcode", unitBarcode.trim());
       formData.set("harga_beli", String(parseRibuan(unitHargaBeli)));
       formData.set("harga_jual", String(parseRibuan(unitHargaJual)));
-      formData.set("qty_grosir", String(Number(unitQtyGrosir) || 0));
-      formData.set("harga_grosir", String(parseRibuan(unitHargaGrosir)));
 
       if (editingUnitId) {
         await updateProductUnit(editingUnitId, formData);
@@ -264,6 +259,35 @@ export default function ProdukClient({
       const data = await getProductUnits(editing.id);
       setUnits(data as ProductUnit[]);
     }
+  }
+
+  async function refreshTiers() {
+    if (!editing) return;
+    const data = await getHargaTiers(editing.id);
+    setTiers(data);
+  }
+
+  async function handleAddBaseTier(qtyMinimum: number, harga: number) {
+    if (!editing) return;
+    await createHargaTier(editing.id, null, qtyMinimum, harga);
+    await refreshTiers();
+  }
+
+  async function handleAddUnitTier(unitId: string, qtyMinimum: number, harga: number) {
+    if (!editing) return;
+    await createHargaTier(editing.id, unitId, qtyMinimum, harga);
+    await refreshTiers();
+  }
+
+  async function handleUpdateTier(tierId: string, qtyMinimum: number, harga: number) {
+    await updateHargaTier(tierId, qtyMinimum, harga);
+    await refreshTiers();
+  }
+
+  async function handleDeleteTier(tierId: string) {
+    if (!confirm("Hapus tingkatan grosir ini?")) return;
+    await deleteHargaTier(tierId);
+    await refreshTiers();
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -378,11 +402,6 @@ export default function ProdukClient({
                   {p.diskon_persen > 0 && (
                     <div className="text-xs text-brand">
                       jadi Rp{hargaEfektif(p).toLocaleString("id-ID")}
-                    </div>
-                  )}
-                  {p.qty_grosir > 0 && (
-                    <div className="text-[10px] text-gray-400">
-                      &gt;{p.qty_grosir}: Rp{p.harga_grosir.toLocaleString("id-ID")}
                     </div>
                   )}
                 </td>
@@ -561,36 +580,24 @@ export default function ProdukClient({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium block mb-1">Qty Grosir (satuan eceran)</label>
-                    <input
-                      type="number"
-                      value={qtyGrosir}
-                      onChange={(e) => setQtyGrosir(e.target.value)}
-                      placeholder="0 = tanpa harga grosir"
-                      min={0}
-                      className="border rounded-lg w-full px-3 py-2 text-sm"
+                <div>
+                  <label className="text-sm font-medium block mb-1">
+                    Tingkatan Harga Grosir (satuan eceran)
+                  </label>
+                  {!editing ? (
+                    <p className="text-xs text-gray-400 italic bg-gray-50 rounded-lg p-3">
+                      Simpan produk ini dulu, tingkatan grosir bisa ditambahkan setelah dibuka lagi lewat Edit.
+                    </p>
+                  ) : (
+                    <HargaTierEditor
+                      tiers={tiers.filter((t) => t.product_unit_id === null)}
+                      satuanLabel={editing.satuan}
+                      onAdd={handleAddBaseTier}
+                      onUpdate={handleUpdateTier}
+                      onDelete={handleDeleteTier}
                     />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-1">Harga Grosir (per pcs)</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={hargaGrosir}
-                      onChange={(e) => setHargaGrosir(formatRibuan(e.target.value))}
-                      placeholder="0"
-                      className="border rounded-lg w-full px-3 py-2 text-sm font-mono"
-                    />
-                  </div>
+                  )}
                 </div>
-                {Number(qtyGrosir) > 0 && (
-                  <p className="text-xs text-gray-400 -mt-2">
-                    Beli lebih dari {qtyGrosir} {editing?.satuan ?? "pcs"} → harga otomatis jadi Rp
-                    {parseRibuan(hargaGrosir).toLocaleString("id-ID")}/{editing?.satuan ?? "pcs"}.
-                  </p>
-                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -665,9 +672,9 @@ export default function ProdukClient({
                               <td className="py-1">Rp{u.harga_beli.toLocaleString("id-ID")}</td>
                               <td className="py-1">
                                 {u.harga_jual ? `Rp${u.harga_jual.toLocaleString("id-ID")}` : "-"}
-                                {u.qty_grosir > 0 && (
+                                {tiers.filter((t) => t.product_unit_id === u.id).length > 0 && (
                                   <div className="text-[10px] text-brand">
-                                    &gt;{u.qty_grosir}: Rp{u.harga_grosir.toLocaleString("id-ID")}
+                                    {tiers.filter((t) => t.product_unit_id === u.id).length} tingkatan grosir
                                   </div>
                                 )}
                               </td>
@@ -756,28 +763,24 @@ export default function ProdukClient({
                           />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            value={unitQtyGrosir}
-                            onChange={(e) => setUnitQtyGrosir(e.target.value)}
-                            placeholder="Qty grosir (0=off)"
-                            className="border rounded-lg px-2 py-1.5 text-xs"
-                          />
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={unitHargaGrosir}
-                            onChange={(e) => setUnitHargaGrosir(formatRibuan(e.target.value))}
-                            placeholder="Harga grosir/satuan"
-                            className="border rounded-lg px-2 py-1.5 text-xs font-mono"
-                          />
-                        </div>
-                        {Number(unitQtyGrosir) > 0 && (
-                          <p className="text-[11px] text-gray-400">
-                            Beli lebih dari {unitQtyGrosir} {finalSatuanValue || "satuan"} → jadi Rp
-                            {parseRibuan(unitHargaGrosir).toLocaleString("id-ID")}/{finalSatuanValue || "satuan"}.
+                        {editingUnitId ? (
+                          <div>
+                            <p className="text-[11px] font-medium text-gray-500 mb-1">
+                              Tingkatan Harga Grosir
+                            </p>
+                            <HargaTierEditor
+                              tiers={tiers.filter((t) => t.product_unit_id === editingUnitId)}
+                              satuanLabel={finalSatuanValue || "satuan"}
+                              onAdd={(qtyMinimum, harga) =>
+                                handleAddUnitTier(editingUnitId, qtyMinimum, harga)
+                              }
+                              onUpdate={handleUpdateTier}
+                              onDelete={handleDeleteTier}
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-gray-400 italic">
+                            Simpan satuan ini dulu, tingkatan grosir bisa ditambahkan setelah dibuka lagi lewat Edit.
                           </p>
                         )}
 
@@ -819,6 +822,153 @@ export default function ProdukClient({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function HargaTierEditor({
+  tiers,
+  satuanLabel,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: {
+  tiers: HargaTierRow[];
+  satuanLabel: string;
+  onAdd: (qtyMinimum: number, harga: number) => Promise<void>;
+  onUpdate: (tierId: string, qtyMinimum: number, harga: number) => Promise<void>;
+  onDelete: (tierId: string) => Promise<void>;
+}) {
+  const [newQty, setNewQty] = useState("");
+  const [newHarga, setNewHarga] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const sorted = [...tiers].sort((a, b) => a.qty_minimum - b.qty_minimum);
+
+  async function handleAdd() {
+    setError(null);
+    const qty = Number(newQty);
+    const harga = parseRibuan(newHarga);
+    if (!qty || qty <= 0 || !harga) {
+      setError("Qty minimum dan harga wajib diisi.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onAdd(qty, harga);
+      setNewQty("");
+      setNewHarga("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {sorted.length === 0 ? (
+        <p className="text-[11px] text-gray-400">Belum ada tingkatan grosir.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {sorted.map((t) => (
+            <TierRow key={t.id} tier={t} satuanLabel={satuanLabel} onUpdate={onUpdate} onDelete={onDelete} />
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={1}
+          value={newQty}
+          onChange={(e) => setNewQty(e.target.value)}
+          placeholder={`Mulai dari (${satuanLabel})`}
+          className="border rounded-lg px-2 py-1 text-xs w-28"
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          value={newHarga}
+          onChange={(e) => setNewHarga(formatRibuan(e.target.value))}
+          placeholder="Harga"
+          className="border rounded-lg px-2 py-1 text-xs flex-1 font-mono"
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={saving}
+          className="text-brand text-xs border border-brand rounded-lg px-2 py-1 disabled:opacity-50 whitespace-nowrap"
+        >
+          + Tambah
+        </button>
+      </div>
+      {error && <p className="text-red-500 text-[11px]">{error}</p>}
+    </div>
+  );
+}
+
+function TierRow({
+  tier,
+  satuanLabel,
+  onUpdate,
+  onDelete,
+}: {
+  tier: HargaTierRow;
+  satuanLabel: string;
+  onUpdate: (tierId: string, qtyMinimum: number, harga: number) => Promise<void>;
+  onDelete: (tierId: string) => Promise<void>;
+}) {
+  const [qty, setQty] = useState(String(tier.qty_minimum));
+  const [harga, setHarga] = useState(formatRibuan(String(tier.harga)));
+  const [saving, setSaving] = useState(false);
+  const dirty = Number(qty) !== tier.qty_minimum || parseRibuan(harga) !== tier.harga;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onUpdate(tier.id, Number(qty), parseRibuan(harga));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2 py-1">
+      <span className="text-[11px] text-gray-400 whitespace-nowrap">mulai dari</span>
+      <input
+        type="number"
+        min={1}
+        value={qty}
+        onChange={(e) => setQty(e.target.value)}
+        className="border rounded px-1.5 py-1 text-xs w-16"
+      />
+      <span className="text-[11px] text-gray-400 whitespace-nowrap">{satuanLabel} →</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={harga}
+        onChange={(e) => setHarga(formatRibuan(e.target.value))}
+        className="border rounded px-1.5 py-1 text-xs flex-1 font-mono"
+      />
+      {dirty && (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="text-brand text-[11px] whitespace-nowrap disabled:opacity-50"
+        >
+          {saving ? "..." : "Simpan"}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => onDelete(tier.id)}
+        className="text-red-500 text-[11px] whitespace-nowrap"
+      >
+        Hapus
+      </button>
     </div>
   );
 }

@@ -3,14 +3,18 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
+export interface KasirHargaTier {
+  qty_minimum: number;
+  harga: number;
+}
+
 export interface KasirUnitOption {
   product_unit_id: string | null;
   satuan: string;
   konversi: number;
   harga_jual: number;
   harga_modal_per_eceran: number;
-  qty_grosir: number;
-  harga_grosir: number;
+  tiers: KasirHargaTier[];
 }
 
 export interface KasirSearchResult {
@@ -27,17 +31,24 @@ function hitungHargaEfektif(hargaJual: number, diskonPersen: number) {
 }
 
 const PRODUCT_SELECT =
-  "id, nama, satuan, harga_jual, harga_modal, diskon_persen, qty_grosir, harga_grosir, stok, foto_url, kode_barcode, is_aktif, product_units(id, satuan, konversi, harga_jual, harga_beli, kode_barcode, qty_grosir, harga_grosir)";
+  "id, nama, satuan, harga_jual, harga_modal, diskon_persen, stok, foto_url, kode_barcode, is_aktif, product_units(id, satuan, konversi, harga_jual, harga_beli, kode_barcode), product_harga_tier(product_unit_id, qty_minimum, harga)";
 
 function buildResult(product: any, matchedUnitKey: string): KasirSearchResult {
+  const allTiers = (product.product_harga_tier ?? []) as {
+    product_unit_id: string | null;
+    qty_minimum: number;
+    harga: number;
+  }[];
+
   const baseUnit: KasirUnitOption = {
     product_unit_id: null,
     satuan: product.satuan,
     konversi: 1,
     harga_jual: hitungHargaEfektif(product.harga_jual, product.diskon_persen),
     harga_modal_per_eceran: product.harga_modal,
-    qty_grosir: product.qty_grosir ?? 0,
-    harga_grosir: product.harga_grosir ?? 0,
+    tiers: allTiers
+      .filter((t) => t.product_unit_id === null)
+      .map((t) => ({ qty_minimum: t.qty_minimum, harga: t.harga })),
   };
 
   const extraUnits: KasirUnitOption[] = (product.product_units ?? [])
@@ -48,8 +59,9 @@ function buildResult(product: any, matchedUnitKey: string): KasirSearchResult {
       konversi: u.konversi,
       harga_jual: u.harga_jual,
       harga_modal_per_eceran: u.harga_beli / u.konversi,
-      qty_grosir: u.qty_grosir ?? 0,
-      harga_grosir: u.harga_grosir ?? 0,
+      tiers: allTiers
+        .filter((t) => t.product_unit_id === u.id)
+        .map((t) => ({ qty_minimum: t.qty_minimum, harga: t.harga })),
     }));
 
   return {

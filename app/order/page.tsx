@@ -28,17 +28,23 @@ interface CartItem {
   unitId: string | null;
 }
 
+interface HargaTierEntry {
+  product_unit_id: string | null;
+  qty_minimum: number;
+  harga: number;
+}
+
 interface UnitOption {
   id: string | null;
   satuan: string;
   hargaJual: number;
   hargaNormal: number;
-  hargaGrosir: number;
-  qtyGrosir: number;
   hargaModalPerEceran: number;
   konversi: number;
   adaDiskonEceran: boolean;
   isGrosir: boolean;
+  tierAktif: HargaTierEntry | null;
+  tierBerikutnya: HargaTierEntry | null;
 }
 
 function hargaEfektif(p: Product) {
@@ -47,39 +53,59 @@ function hargaEfektif(p: Product) {
     : p.harga_jual;
 }
 
+function pilihHargaTier(tiers: HargaTierEntry[], qty: number, hargaNormal: number) {
+  const eligible = tiers.filter((t) => qty >= t.qty_minimum);
+  const tierAktif =
+    eligible.length > 0 ? eligible.reduce((a, b) => (b.qty_minimum > a.qty_minimum ? b : a)) : null;
+  const belumTercapai = tiers
+    .filter((t) => qty < t.qty_minimum)
+    .sort((a, b) => a.qty_minimum - b.qty_minimum);
+  const tierBerikutnya = belumTercapai.length > 0 ? belumTercapai[0] : null;
+  return {
+    harga: tierAktif ? tierAktif.harga : hargaNormal,
+    isGrosir: !!tierAktif,
+    tierAktif,
+    tierBerikutnya,
+  };
+}
+
 function getUnitOptions(
   product: Product,
   unitsMap: Record<string, ProductUnit[]>,
+  tiersMap: Record<string, HargaTierEntry[]>,
   qty: number = 1
 ): UnitOption[] {
+  const productTiers = tiersMap[product.id] ?? [];
   const hargaNormalBase = hargaEfektif(product);
-  const grosirAktifBase = product.qty_grosir > 0 && qty > product.qty_grosir;
+  const baseTiers = productTiers.filter((t) => t.product_unit_id === null);
+  const pilihanBase = pilihHargaTier(baseTiers, qty, hargaNormalBase);
   const base: UnitOption = {
     id: null,
     satuan: product.satuan,
-    hargaJual: grosirAktifBase ? product.harga_grosir : hargaNormalBase,
+    hargaJual: pilihanBase.harga,
     hargaNormal: hargaNormalBase,
-    hargaGrosir: product.harga_grosir,
-    qtyGrosir: product.qty_grosir,
     hargaModalPerEceran: product.harga_modal,
     konversi: 1,
     adaDiskonEceran: product.diskon_persen > 0,
-    isGrosir: grosirAktifBase,
+    isGrosir: pilihanBase.isGrosir,
+    tierAktif: pilihanBase.tierAktif,
+    tierBerikutnya: pilihanBase.tierBerikutnya,
   };
   const alts: UnitOption[] = (unitsMap[product.id] ?? []).map((u) => {
     const hargaNormalUnit = u.harga_jual as number;
-    const grosirAktifUnit = u.qty_grosir > 0 && qty > u.qty_grosir;
+    const unitTiers = productTiers.filter((t) => t.product_unit_id === u.id);
+    const pilihanUnit = pilihHargaTier(unitTiers, qty, hargaNormalUnit);
     return {
       id: u.id,
       satuan: u.satuan,
-      hargaJual: grosirAktifUnit ? u.harga_grosir : hargaNormalUnit,
+      hargaJual: pilihanUnit.harga,
       hargaNormal: hargaNormalUnit,
-      hargaGrosir: u.harga_grosir,
-      qtyGrosir: u.qty_grosir,
       hargaModalPerEceran: u.harga_beli / u.konversi,
       konversi: u.konversi,
       adaDiskonEceran: false,
-      isGrosir: grosirAktifUnit,
+      isGrosir: pilihanUnit.isGrosir,
+      tierAktif: pilihanUnit.tierAktif,
+      tierBerikutnya: pilihanUnit.tierBerikutnya,
     };
   });
   return [base, ...alts];
@@ -94,6 +120,7 @@ export default function OrderPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productUnitsMap, setProductUnitsMap] = useState<Record<string, ProductUnit[]>>({});
+  const [tiersMap, setTiersMap] = useState<Record<string, HargaTierEntry[]>>({});
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -124,15 +151,23 @@ export default function OrderPage() {
 
   useEffect(() => {
     async function loadData() {
-      const [{ data: cats }, { data: prods }, { data: units }, { data: userData }, minBelanja, tiers] =
-        await Promise.all([
-          supabase.from("categories").select("*").order("urutan"),
-          supabase.from("products").select("*").eq("is_aktif", true),
-          supabase.from("product_units").select("*").not("harga_jual", "is", null),
-          supabase.auth.getUser(),
-          getMinimalBelanja(),
-          getActiveTiers(),
-        ]);
+      const [
+        { data: cats },
+        { data: prods },
+        { data: units },
+        { data: hargaTiers },
+        { data: userData },
+        minBelanja,
+        tiers,
+      ] = await Promise.all([
+        supabase.from("categories").select("*").order("urutan"),
+        supabase.from("products").select("*").eq("is_aktif", true),
+        supabase.from("product_units").select("*").not("harga_jual", "is", null),
+        supabase.from("product_harga_tier").select("*"),
+        supabase.auth.getUser(),
+        getMinimalBelanja(),
+        getActiveTiers(),
+      ]);
       setMinimalBelanja(minBelanja);
       setActiveTiers(tiers);
 
@@ -145,6 +180,17 @@ export default function OrderPage() {
         unitsMap[u.product_id].push(u);
       }
       setProductUnitsMap(unitsMap);
+
+      const newTiersMap: Record<string, HargaTierEntry[]> = {};
+      for (const t of hargaTiers ?? []) {
+        if (!newTiersMap[t.product_id]) newTiersMap[t.product_id] = [];
+        newTiersMap[t.product_id].push({
+          product_unit_id: t.product_unit_id,
+          qty_minimum: t.qty_minimum,
+          harga: t.harga,
+        });
+      }
+      setTiersMap(newTiersMap);
 
       setActiveCategory(cats?.[0]?.id ?? null);
 
@@ -172,7 +218,7 @@ export default function OrderPage() {
   const isLoggedIn = !!customerId;
 
   function unitOptionForCartItem(item: CartItem): UnitOption {
-    const options = getUnitOptions(item.product, productUnitsMap, item.qty);
+    const options = getUnitOptions(item.product, productUnitsMap, tiersMap, item.qty);
     return options.find((o) => o.id === item.unitId) ?? options[0];
   }
 
@@ -476,6 +522,7 @@ export default function OrderPage() {
               key={p.id}
               product={p}
               units={productUnitsMap[p.id] ?? []}
+              tiers={tiersMap[p.id] ?? []}
               onTambah={tambahKeKeranjang}
             />
           ))}
@@ -587,8 +634,10 @@ export default function OrderPage() {
                         <div className="text-xs font-mono text-ink-soft">
                           Rp{(unit.hargaJual * item.qty).toLocaleString("id-ID")}
                         </div>
-                        {unit.isGrosir && (
-                          <div className="text-[10px] text-brand">Harga grosir aktif</div>
+                        {unit.isGrosir && unit.tierAktif && (
+                          <div className="text-[10px] text-brand">
+                            Harga grosir aktif (mulai dari {unit.tierAktif.qty_minimum})
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -808,16 +857,18 @@ export default function OrderPage() {
 function ProductCard({
   product,
   units,
+  tiers,
   onTambah,
 }: {
   product: Product;
   units: ProductUnit[];
+  tiers: HargaTierEntry[];
   onTambah: (product: Product, qty: number, unitId: string | null) => void;
 }) {
   const [qty, setQty] = useState(1);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
-  const options = getUnitOptions(product, { [product.id]: units }, qty);
+  const options = getUnitOptions(product, { [product.id]: units }, { [product.id]: tiers }, qty);
   const selected = options.find((o) => o.id === selectedUnitId) ?? options[0];
   const adaDiskonBadge = product.diskon_persen > 0;
 
@@ -884,11 +935,15 @@ function ProductCard({
             Rp{selected.hargaJual.toLocaleString("id-ID")}
           </div>
         )}
-        {selected.qtyGrosir > 0 && (
+        {selected.isGrosir && selected.tierAktif && (
           <p className="text-[10px] text-ink-soft mb-2">
-            {selected.isGrosir
-              ? `Harga grosir aktif (beli lebih dari ${selected.qtyGrosir}).`
-              : `Beli lebih dari ${selected.qtyGrosir} ${selected.satuan} jadi Rp${selected.hargaGrosir.toLocaleString("id-ID")}/${selected.satuan}.`}
+            Harga grosir aktif (mulai dari {selected.tierAktif.qty_minimum} {selected.satuan}).
+          </p>
+        )}
+        {selected.tierBerikutnya && (
+          <p className="text-[10px] text-ink-soft mb-2">
+            Beli mulai {selected.tierBerikutnya.qty_minimum} {selected.satuan} jadi Rp
+            {selected.tierBerikutnya.harga.toLocaleString("id-ID")}/{selected.satuan}.
           </p>
         )}
 
