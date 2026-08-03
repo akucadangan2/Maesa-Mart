@@ -91,6 +91,7 @@ export default function BarcodeClient() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const svgRefs = useRef<Map<string, SVGSVGElement>>(new Map());
+  const previewSvgRefs = useRef<Map<string, SVGSVGElement>>(new Map());
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchSeq = useRef(0);
@@ -271,6 +272,20 @@ export default function BarcodeClient() {
         )
       : [];
 
+  // Data contoh buat preview layar, dipakai kalau antrian masih kosong/kurang dari 1 baris penuh
+  const previewSampleItem = {
+    nama_produk: "CONTOH PRODUK",
+    kode_barcode: "8991234567890",
+    harga: 5000,
+  };
+  const previewRowSource =
+    printItems.length > 0
+      ? printItems.slice(0, kolomCount)
+      : Array.from({ length: kolomCount }, (_, i) => ({
+          ...previewSampleItem,
+          printKey: `preview-${i}`,
+        }));
+
   useEffect(() => {
     printItems.forEach((item) => {
       const el = svgRefs.current.get(item.printKey);
@@ -290,6 +305,28 @@ export default function BarcodeClient() {
       }
     });
   }, [printItems.length, queue, preset, mode, gridBarcodeParams]);
+
+  // Render barcode buat preview layar (mode grid), pakai parameter yang sama
+  // persis dengan yang bakal dicetak, biar preview ini akurat mewakili hasil asli.
+  useEffect(() => {
+    if (mode !== "grid") return;
+    previewRowSource.forEach((item) => {
+      const el = previewSvgRefs.current.get(item.printKey);
+      if (el && item.kode_barcode) {
+        try {
+          JsBarcode(el, item.kode_barcode, {
+            format: "CODE128",
+            width: gridBarcodeParams.barcodeWidth,
+            height: gridBarcodeParams.barcodeHeight,
+            displayValue: false,
+            margin: 1,
+          });
+        } catch {
+          // Barcode contoh gagal render, biarin kosong
+        }
+      }
+    });
+  }, [mode, gridBarcodeParams, printItems.length, queue]);
 
   return (
     <div>
@@ -496,6 +533,92 @@ export default function BarcodeClient() {
               <p className="text-xs text-gray-400 mt-2">
                 1 kotak real: {boxWidthNum}mm x {boxHeightNum}mm · celah kolom {colGapNum}mm · celah baris {rowGapNum}mm · digeser {offsetXNum}mm · barcode {gridBarcodeScale}%
               </p>
+
+              <div className="mt-4 pt-3 border-t">
+                <p className="text-xs text-gray-500 mb-2">
+                  Preview skala nyata di layar (garis putus-putus = perkiraan garis potong roll fisik).
+                  Bandingkan lebar & jaraknya langsung ke roll asli sebelum cetak sungguhan.
+                </p>
+                <div className="overflow-x-auto bg-gray-200 rounded-lg p-4">
+                  <div
+                    style={{
+                      width: `${totalWidthNum}mm`,
+                      paddingLeft: `${offsetXNum}mm`,
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {[0, 1].map((rowIdx) => (
+                      <div
+                        key={rowIdx}
+                        style={{
+                          display: "flex",
+                          flexDirection: "row",
+                          marginBottom: rowIdx === 0 ? `${rowGapNum}mm` : 0,
+                        }}
+                      >
+                        {previewRowSource.map((item, colIdx) => (
+                          <div
+                            key={`${rowIdx}-${item.printKey}`}
+                            style={{
+                              width: `${colWidthNum}mm`,
+                              height: `${rowHeightNum}mm`,
+                              marginRight: colIdx < previewRowSource.length - 1 ? `${colGapNum}mm` : 0,
+                              border: "1px dashed #9ca3af",
+                              background: "white",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              overflow: "hidden",
+                              padding: "0.5mm",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: `${gridBarcodeParams.fontSize + 1}px`,
+                                fontWeight: 700,
+                                textAlign: "center",
+                                textTransform: "uppercase",
+                                lineHeight: 1.1,
+                                maxWidth: "100%",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.nama_produk}
+                            </div>
+                            {rowIdx === 0 ? (
+                              <svg
+                                ref={(el) => {
+                                  if (el) previewSvgRefs.current.set(item.printKey, el);
+                                }}
+                              />
+                            ) : (
+                              <div style={{ fontSize: "6px", color: "#9ca3af" }}>(barcode)</div>
+                            )}
+                            <div
+                              style={{
+                                fontSize: `${gridBarcodeParams.fontSize}px`,
+                                fontWeight: 600,
+                                textAlign: "center",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  {printItems.length === 0
+                    ? "Belum ada produk di antrian, preview ini pakai data contoh."
+                    : `Preview pakai ${Math.min(kolomCount, printItems.length)} produk pertama di antrian kamu.`}
+                </p>
+              </div>
             </div>
           )}
           <p className="text-xs text-gray-400 mt-1.5">Pengaturan ini otomatis keinget di komputer ini.</p>
