@@ -30,7 +30,7 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
-const STORAGE_KEY = "maesa_barcode_label_pref_v3";
+const STORAGE_KEY = "maesa_barcode_label_pref_v4";
 
 type PrintMode = "single" | "grid";
 
@@ -41,7 +41,10 @@ interface SavedPref {
   customHeight: string;
   gridTotalWidth: string;
   gridColumns: string;
-  gridRowHeight: string;
+  gridBoxWidth: string;
+  gridBoxHeight: string;
+  gridColGap: string;
+  gridRowGap: string;
   gridOffsetX: string;
   gridBarcodeScale: string;
 }
@@ -97,9 +100,12 @@ export default function BarcodeClient() {
   const [customWidth, setCustomWidth] = useState("40");
   const [customHeight, setCustomHeight] = useState("30");
 
-  const [gridTotalWidth, setGridTotalWidth] = useState("71.9");
+  const [gridTotalWidth, setGridTotalWidth] = useState("106");
   const [gridColumns, setGridColumns] = useState("3");
-  const [gridRowHeight, setGridRowHeight] = useState("22.9");
+  const [gridBoxWidth, setGridBoxWidth] = useState("33");
+  const [gridBoxHeight, setGridBoxHeight] = useState("14");
+  const [gridColGap, setGridColGap] = useState("2");
+  const [gridRowGap, setGridRowGap] = useState("2");
   const [gridOffsetX, setGridOffsetX] = useState("0");
   const [gridBarcodeScale, setGridBarcodeScale] = useState("100");
 
@@ -112,7 +118,10 @@ export default function BarcodeClient() {
       setCustomHeight(saved.customHeight);
       setGridTotalWidth(saved.gridTotalWidth);
       setGridColumns(saved.gridColumns);
-      setGridRowHeight(saved.gridRowHeight);
+      setGridBoxWidth(saved.gridBoxWidth ?? "33");
+      setGridBoxHeight(saved.gridBoxHeight ?? "14");
+      setGridColGap(saved.gridColGap ?? "2");
+      setGridRowGap(saved.gridRowGap ?? "2");
       setGridOffsetX(saved.gridOffsetX ?? "0");
       setGridBarcodeScale(saved.gridBarcodeScale ?? "100");
     }
@@ -126,7 +135,10 @@ export default function BarcodeClient() {
       customHeight,
       gridTotalWidth,
       gridColumns,
-      gridRowHeight,
+      gridBoxWidth,
+      gridBoxHeight,
+      gridColGap,
+      gridRowGap,
       gridOffsetX,
       gridBarcodeScale,
       ...patch,
@@ -149,14 +161,20 @@ export default function BarcodeClient() {
     ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
     : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
 
-  const pageWidthMm = mode === "grid" ? Number(gridTotalWidth) || 71.9 : preset.widthMm;
+  const pageWidthMm = mode === "grid" ? Number(gridTotalWidth) || 106 : preset.widthMm;
 
-  const kolomCount = Math.max(1, Number(gridColumns) || 1);
-  const totalWidthNum = Number(gridTotalWidth) || 71.9;
-  const rowHeightNum = Number(gridRowHeight) || 22.9;
+  const kolomCount = Math.max(1, Number(gridColumns) || 3);
+  const totalWidthNum = Number(gridTotalWidth) || 106;
+  const boxWidthNum = Number(gridBoxWidth) || 33;
+  const boxHeightNum = Number(gridBoxHeight) || 14;
+  const colGapNum = Number(gridColGap) || 0;
+  const rowGapNum = Number(gridRowGap) || 0;
   const offsetXNum = Number(gridOffsetX) || 0;
   const barcodeScaleNum = (Number(gridBarcodeScale) || 100) / 100;
-  const colWidthNum = Math.max(5, (totalWidthNum - offsetXNum) / kolomCount);
+
+  const colWidthNum = boxWidthNum;
+  const rowHeightNum = boxHeightNum;
+
   const gridBarcodeParamsBase = hitungBarcodeParams(colWidthNum, rowHeightNum);
   const gridBarcodeParams = {
     barcodeWidth: gridBarcodeParamsBase.barcodeWidth * barcodeScaleNum,
@@ -360,11 +378,11 @@ export default function BarcodeClient() {
           ) : (
             <div className="bg-gray-50 border rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-2">
-                Diisi sesuai info driver BarTender (Stock size). Ubah kalau perlu.
+                Diisi berdasarkan hasil ukur manual roll fisik pakai penggaris.
               </p>
-              <div className="grid grid-cols-3 gap-2 max-w-md">
+              <div className="grid grid-cols-3 gap-2 max-w-md mb-2">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Lebar Total (mm)</label>
+                  <label className="text-xs text-gray-500 block mb-1">Lebar Total Roll (mm)</label>
                   <input
                     type="number"
                     step="0.1"
@@ -389,15 +407,57 @@ export default function BarcodeClient() {
                     className="w-full border rounded px-2 py-1.5 text-sm"
                   />
                 </div>
+                <div />
+              </div>
+              <div className="grid grid-cols-4 gap-2 max-w-lg mb-2">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Tinggi Baris (mm)</label>
+                  <label className="text-xs text-gray-500 block mb-1">Lebar 1 Kotak (mm)</label>
                   <input
                     type="number"
                     step="0.1"
-                    value={gridRowHeight}
+                    value={gridBoxWidth}
                     onChange={(e) => {
-                      setGridRowHeight(e.target.value);
-                      simpanSemua({ gridRowHeight: e.target.value });
+                      setGridBoxWidth(e.target.value);
+                      simpanSemua({ gridBoxWidth: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Tinggi 1 Kotak (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={gridBoxHeight}
+                    onChange={(e) => {
+                      setGridBoxHeight(e.target.value);
+                      simpanSemua({ gridBoxHeight: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Celah Kolom (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={gridColGap}
+                    onChange={(e) => {
+                      setGridColGap(e.target.value);
+                      simpanSemua({ gridColGap: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Celah Baris (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={gridRowGap}
+                    onChange={(e) => {
+                      setGridRowGap(e.target.value);
+                      simpanSemua({ gridRowGap: e.target.value });
                     }}
                     className="w-full border rounded px-2 py-1.5 text-sm"
                   />
@@ -434,7 +494,7 @@ export default function BarcodeClient() {
                 </div>
               </div>
               <p className="text-xs text-gray-400 mt-2">
-                1 kotak label ≈ {colWidthNum.toFixed(1)}mm x {rowHeightNum}mm (geser {offsetXNum}mm, ukuran barcode {gridBarcodeScale}%)
+                1 kotak real: {boxWidthNum}mm x {boxHeightNum}mm · celah kolom {colGapNum}mm · celah baris {rowGapNum}mm · digeser {offsetXNum}mm · barcode {gridBarcodeScale}%
               </p>
             </div>
           )}
@@ -635,19 +695,20 @@ export default function BarcodeClient() {
                 className="label-row"
                 style={{
                   width: `${totalWidthNum}mm`,
-                  height: `${rowHeightNum}mm`,
                   boxSizing: "border-box",
                   paddingLeft: `${offsetXNum}mm`,
+                  marginBottom: `${rowGapNum}mm`,
                   display: "flex",
                   flexDirection: "row",
                 }}
               >
-                {row.map((item) => (
+                {row.map((item, colIndex) => (
                   <div
                     key={item.printKey}
                     style={{
                       width: `${colWidthNum}mm`,
                       height: `${rowHeightNum}mm`,
+                      marginRight: colIndex < row.length - 1 ? `${colGapNum}mm` : 0,
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
