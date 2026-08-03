@@ -42,6 +42,8 @@ interface SavedPref {
   gridTotalWidth: string;
   gridColumns: string;
   gridRowHeight: string;
+  gridOffsetX: string;
+  gridBarcodeScale: string;
 }
 
 function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
@@ -98,6 +100,8 @@ export default function BarcodeClient() {
   const [gridTotalWidth, setGridTotalWidth] = useState("71.9");
   const [gridColumns, setGridColumns] = useState("3");
   const [gridRowHeight, setGridRowHeight] = useState("22.9");
+  const [gridOffsetX, setGridOffsetX] = useState("0");
+  const [gridBarcodeScale, setGridBarcodeScale] = useState("100");
 
   useEffect(() => {
     const saved = muatPreferensiTersimpan();
@@ -109,6 +113,8 @@ export default function BarcodeClient() {
       setGridTotalWidth(saved.gridTotalWidth);
       setGridColumns(saved.gridColumns);
       setGridRowHeight(saved.gridRowHeight);
+      setGridOffsetX(saved.gridOffsetX ?? "0");
+      setGridBarcodeScale(saved.gridBarcodeScale ?? "100");
     }
   }, []);
 
@@ -121,6 +127,8 @@ export default function BarcodeClient() {
       gridTotalWidth,
       gridColumns,
       gridRowHeight,
+      gridOffsetX,
+      gridBarcodeScale,
       ...patch,
     };
     simpanPreferensi(pref);
@@ -146,8 +154,15 @@ export default function BarcodeClient() {
   const kolomCount = Math.max(1, Number(gridColumns) || 1);
   const totalWidthNum = Number(gridTotalWidth) || 71.9;
   const rowHeightNum = Number(gridRowHeight) || 22.9;
-  const colWidthNum = totalWidthNum / kolomCount;
-  const gridBarcodeParams = hitungBarcodeParams(colWidthNum, rowHeightNum);
+  const offsetXNum = Number(gridOffsetX) || 0;
+  const barcodeScaleNum = (Number(gridBarcodeScale) || 100) / 100;
+  const colWidthNum = Math.max(5, (totalWidthNum - offsetXNum) / kolomCount);
+  const gridBarcodeParamsBase = hitungBarcodeParams(colWidthNum, rowHeightNum);
+  const gridBarcodeParams = {
+    barcodeWidth: gridBarcodeParamsBase.barcodeWidth * barcodeScaleNum,
+    barcodeHeight: gridBarcodeParamsBase.barcodeHeight * barcodeScaleNum,
+    fontSize: Math.max(6, Math.round(gridBarcodeParamsBase.fontSize * barcodeScaleNum)),
+  };
 
   useEffect(() => {
     const seq = ++searchSeq.current;
@@ -388,8 +403,38 @@ export default function BarcodeClient() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2 max-w-xs mt-2">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Geser Kanan (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={gridOffsetX}
+                    onChange={(e) => {
+                      setGridOffsetX(e.target.value);
+                      simpanSemua({ gridOffsetX: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Perbesar Barcode (%)</label>
+                  <input
+                    type="number"
+                    step="5"
+                    min={50}
+                    max={200}
+                    value={gridBarcodeScale}
+                    onChange={(e) => {
+                      setGridBarcodeScale(e.target.value);
+                      simpanSemua({ gridBarcodeScale: e.target.value });
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
               <p className="text-xs text-gray-400 mt-2">
-                1 kotak label ≈ {colWidthNum.toFixed(1)}mm x {rowHeightNum}mm
+                1 kotak label ≈ {colWidthNum.toFixed(1)}mm x {rowHeightNum}mm (geser {offsetXNum}mm, ukuran barcode {gridBarcodeScale}%)
               </p>
             </div>
           )}
@@ -591,6 +636,8 @@ export default function BarcodeClient() {
                 style={{
                   width: `${totalWidthNum}mm`,
                   height: `${rowHeightNum}mm`,
+                  boxSizing: "border-box",
+                  paddingLeft: `${offsetXNum}mm`,
                   display: "flex",
                   flexDirection: "row",
                 }}
