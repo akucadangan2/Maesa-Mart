@@ -30,7 +30,7 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
-const STORAGE_KEY = "maesa_barcode_label_pref_v4";
+const STORAGE_KEY = "maesa_barcode_label_pref_v5";
 
 type PrintMode = "single" | "grid";
 
@@ -47,6 +47,7 @@ interface SavedPref {
   gridRowGap: string;
   gridOffsetX: string;
   gridBarcodeScale: string;
+  gridColOffsets: string[];
 }
 
 function hitungPresetCustom(widthMm: number, heightMm: number): LabelPreset {
@@ -109,6 +110,7 @@ export default function BarcodeClient() {
   const [gridRowGap, setGridRowGap] = useState("2");
   const [gridOffsetX, setGridOffsetX] = useState("0");
   const [gridBarcodeScale, setGridBarcodeScale] = useState("100");
+  const [gridColOffsets, setGridColOffsets] = useState<string[]>(["0", "0", "0"]);
 
   useEffect(() => {
     const saved = muatPreferensiTersimpan();
@@ -125,6 +127,7 @@ export default function BarcodeClient() {
       setGridRowGap(saved.gridRowGap ?? "2");
       setGridOffsetX(saved.gridOffsetX ?? "0");
       setGridBarcodeScale(saved.gridBarcodeScale ?? "100");
+      setGridColOffsets(saved.gridColOffsets ?? ["0", "0", "0"]);
     }
   }, []);
 
@@ -142,6 +145,7 @@ export default function BarcodeClient() {
       gridRowGap,
       gridOffsetX,
       gridBarcodeScale,
+      gridColOffsets,
       ...patch,
     };
     simpanPreferensi(pref);
@@ -155,6 +159,14 @@ export default function BarcodeClient() {
   function pilihPreset(key: string) {
     setPresetKey(key);
     simpanSemua({ presetKey: key });
+  }
+
+  function ubahColOffset(index: number, value: string) {
+    const next = [...gridColOffsets];
+    while (next.length <= index) next.push("0");
+    next[index] = value;
+    setGridColOffsets(next);
+    simpanSemua({ gridColOffsets: next });
   }
 
   const isCustom = presetKey === "custom";
@@ -175,6 +187,10 @@ export default function BarcodeClient() {
 
   const colWidthNum = boxWidthNum;
   const rowHeightNum = boxHeightNum;
+
+  function colOffsetFor(index: number): number {
+    return Number(gridColOffsets[index]) || 0;
+  }
 
   const gridBarcodeParamsBase = hitungBarcodeParams(colWidthNum, rowHeightNum);
   const gridBarcodeParams = {
@@ -272,7 +288,6 @@ export default function BarcodeClient() {
         )
       : [];
 
-  // Data contoh buat preview layar, dipakai kalau antrian masih kosong/kurang dari 1 baris penuh
   const previewSampleItem = {
     nama_produk: "CONTOH PRODUK",
     kode_barcode: "8991234567890",
@@ -306,8 +321,6 @@ export default function BarcodeClient() {
     });
   }, [printItems.length, queue, preset, mode, gridBarcodeParams]);
 
-  // Render barcode buat preview layar (mode grid), pakai parameter yang sama
-  // persis dengan yang bakal dicetak, biar preview ini akurat mewakili hasil asli.
   useEffect(() => {
     if (mode !== "grid") return;
     previewRowSource.forEach((item) => {
@@ -500,9 +513,10 @@ export default function BarcodeClient() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 max-w-xs mt-2">
+
+              <div className="grid grid-cols-2 gap-2 max-w-xs mb-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Geser Kanan (mm)</label>
+                  <label className="text-xs text-gray-500 block mb-1">Geser Semua Kolom (mm)</label>
                   <input
                     type="number"
                     step="0.1"
@@ -530,8 +544,30 @@ export default function BarcodeClient() {
                   />
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                1 kotak real: {boxWidthNum}mm x {boxHeightNum}mm · celah kolom {colGapNum}mm · celah baris {rowGapNum}mm · digeser {offsetXNum}mm · barcode {gridBarcodeScale}%
+
+              <div className="border-t pt-3">
+                <p className="text-xs text-gray-500 mb-2">
+                  Geser per kolom (mm) — buat pas satu kolom aja meleset (misal kolom paling kanan),
+                  kolom lain gak ikut kegeser. Boleh negatif (geser kiri).
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {Array.from({ length: kolomCount }, (_, i) => (
+                    <div key={i}>
+                      <label className="text-xs text-gray-500 block mb-1">Kolom {i + 1} (mm)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={gridColOffsets[i] ?? "0"}
+                        onChange={(e) => ubahColOffset(i, e.target.value)}
+                        className="w-24 border rounded px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-400 mt-3">
+                1 kotak real: {boxWidthNum}mm x {boxHeightNum}mm · celah kolom {colGapNum}mm · celah baris {rowGapNum}mm · barcode {gridBarcodeScale}%
               </p>
 
               <div className="mt-4 pt-3 border-t">
@@ -563,6 +599,7 @@ export default function BarcodeClient() {
                               width: `${colWidthNum}mm`,
                               height: `${rowHeightNum}mm`,
                               marginRight: colIdx < previewRowSource.length - 1 ? `${colGapNum}mm` : 0,
+                              transform: `translateX(${colOffsetFor(colIdx)}mm)`,
                               border: "1px dashed #9ca3af",
                               background: "white",
                               display: "flex",
@@ -825,53 +862,62 @@ export default function BarcodeClient() {
                   flexDirection: "row",
                 }}
               >
-                {row.map((item, colIndex) => (
-                  <div
-                    key={item.printKey}
-                    style={{
-                      width: `${colWidthNum}mm`,
-                      height: `${rowHeightNum}mm`,
-                      marginRight: colIndex < row.length - 1 ? `${colGapNum}mm` : 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "hidden",
-                      padding: "0.5mm",
-                    }}
-                  >
+                {Array.from({ length: kolomCount }, (_, colIndex) => {
+                  const item = row[colIndex];
+                  return (
                     <div
+                      key={item ? item.printKey : `empty-${rowIndex}-${colIndex}`}
                       style={{
-                        fontSize: `${gridBarcodeParams.fontSize + 1}px`,
-                        fontWeight: 700,
-                        textAlign: "center",
-                        textTransform: "uppercase",
-                        lineHeight: 1.1,
-                        maxWidth: "100%",
+                        width: `${colWidthNum}mm`,
+                        height: `${rowHeightNum}mm`,
+                        marginRight: colIndex < kolomCount - 1 ? `${colGapNum}mm` : 0,
+                        transform: `translateX(${colOffsetFor(colIndex)}mm)`,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
                         overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        padding: "0.5mm",
+                        visibility: item ? "visible" : "hidden",
                       }}
                     >
-                      {item.nama_produk}
+                      {item && (
+                        <>
+                          <div
+                            style={{
+                              fontSize: `${gridBarcodeParams.fontSize + 1}px`,
+                              fontWeight: 700,
+                              textAlign: "center",
+                              textTransform: "uppercase",
+                              lineHeight: 1.1,
+                              maxWidth: "100%",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.nama_produk}
+                          </div>
+                          <svg
+                            ref={(el) => {
+                              if (el) svgRefs.current.set(item.printKey, el);
+                            }}
+                          />
+                          <div
+                            style={{
+                              fontSize: `${gridBarcodeParams.fontSize}px`,
+                              fontWeight: 600,
+                              textAlign: "center",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <svg
-                      ref={(el) => {
-                        if (el) svgRefs.current.set(item.printKey, el);
-                      }}
-                    />
-                    <div
-                      style={{
-                        fontSize: `${gridBarcodeParams.fontSize}px`,
-                        fontWeight: 600,
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.kode_barcode} Rp.{item.harga.toLocaleString("id-ID")}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
       </div>
