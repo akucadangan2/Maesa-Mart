@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Search, X, Image as ImageIcon, ScanBarcode } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
+interface TierRow {
+  product_unit_id: string | null;
+  qty_minimum: number;
+  harga: number;
+}
+
 interface UnitRow {
   id: string;
   satuan: string;
@@ -21,15 +27,41 @@ interface ProdukResult {
   foto_url: string | null;
   kode_barcode: string | null;
   product_units: UnitRow[];
+  product_harga_tier: TierRow[];
 }
 
 const PRODUCT_SELECT =
-  "id, nama, satuan, harga_jual, diskon_persen, foto_url, kode_barcode, is_aktif, product_units(id, satuan, konversi, harga_jual, kode_barcode)";
+  "id, nama, satuan, harga_jual, diskon_persen, foto_url, kode_barcode, is_aktif, product_units(id, satuan, konversi, harga_jual, kode_barcode), product_harga_tier(product_unit_id, qty_minimum, harga)";
 
 function hargaEfektif(p: ProdukResult) {
   return p.diskon_persen > 0
     ? Math.round(p.harga_jual * (1 - p.diskon_persen / 100))
     : p.harga_jual;
+}
+
+function tiersUntuk(p: ProdukResult, productUnitId: string | null) {
+  return (p.product_harga_tier ?? [])
+    .filter((t) => t.product_unit_id === productUnitId)
+    .sort((a, b) => a.qty_minimum - b.qty_minimum);
+}
+
+function TierList({ tiers, satuan }: { tiers: TierRow[]; satuan: string }) {
+  if (tiers.length === 0) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
+      <p className="text-[11px] text-gray-400 font-medium">Harga Grosir</p>
+      {tiers.map((t) => (
+        <div key={t.qty_minimum} className="flex items-center justify-between text-sm">
+          <span className="text-gray-500">
+            Beli {t.qty_minimum}+ {satuan}
+          </span>
+          <span className="font-mono font-semibold text-brand">
+            Rp{Math.round(t.harga).toLocaleString("id-ID")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function CekHargaPage() {
@@ -214,29 +246,32 @@ export default function CekHargaPage() {
             </div>
 
             <div className="space-y-2 mb-5">
-              <div className="flex items-center justify-between bg-gray-50 rounded-xl p-4">
-                <span className="text-base font-medium text-gray-700">{selected.satuan}</span>
-                <div className="text-right">
-                  {selected.diskon_persen > 0 && (
-                    <div className="text-xs text-gray-400 line-through font-mono">
-                      Rp{selected.harga_jual.toLocaleString("id-ID")}
-                    </div>
-                  )}
-                  <span className="text-3xl font-bold font-mono text-brand">
-                    Rp{hargaEfektif(selected).toLocaleString("id-ID")}
-                  </span>
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-medium text-gray-700">{selected.satuan}</span>
+                  <div className="text-right">
+                    {selected.diskon_persen > 0 && (
+                      <div className="text-xs text-gray-400 line-through font-mono">
+                        Rp{selected.harga_jual.toLocaleString("id-ID")}
+                      </div>
+                    )}
+                    <span className="text-3xl font-bold font-mono text-brand">
+                      Rp{hargaEfektif(selected).toLocaleString("id-ID")}
+                    </span>
+                  </div>
                 </div>
+                <TierList tiers={tiersUntuk(selected, null)} satuan={selected.satuan} />
               </div>
 
               {unitJual.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center justify-between bg-gray-50 rounded-xl p-4"
-                >
-                  <span className="text-base font-medium text-gray-700">{u.satuan}</span>
-                  <span className="text-3xl font-bold font-mono text-brand">
-                    Rp{(u.harga_jual as number).toLocaleString("id-ID")}
-                  </span>
+                <div key={u.id} className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-medium text-gray-700">{u.satuan}</span>
+                    <span className="text-3xl font-bold font-mono text-brand">
+                      Rp{(u.harga_jual as number).toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <TierList tiers={tiersUntuk(selected, u.id)} satuan={u.satuan} />
                 </div>
               ))}
             </div>
