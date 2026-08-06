@@ -30,7 +30,7 @@ const PRESETS: LabelPreset[] = [
   { key: "102x152", label: "4 x 6 inch (102 x 152 mm)", widthMm: 102, heightMm: 152, barcodeWidth: 2.5, barcodeHeight: 60, fontSize: 16 },
 ];
 
-const STORAGE_KEY = "maesa_barcode_label_pref_v5";
+const STORAGE_KEY = "maesa_barcode_label_pref_v6";
 
 type PrintMode = "single" | "grid";
 
@@ -102,12 +102,12 @@ export default function BarcodeClient() {
   const [customWidth, setCustomWidth] = useState("40");
   const [customHeight, setCustomHeight] = useState("30");
 
-  const [gridTotalWidth, setGridTotalWidth] = useState("106");
+  const [gridTotalWidth, setGridTotalWidth] = useState("99");
   const [gridColumns, setGridColumns] = useState("3");
   const [gridBoxWidth, setGridBoxWidth] = useState("33");
-  const [gridBoxHeight, setGridBoxHeight] = useState("14");
-  const [gridColGap, setGridColGap] = useState("2");
-  const [gridRowGap, setGridRowGap] = useState("2");
+  const [gridBoxHeight, setGridBoxHeight] = useState("15");
+  const [gridColGap, setGridColGap] = useState("0");
+  const [gridRowGap, setGridRowGap] = useState("3");
   const [gridOffsetX, setGridOffsetX] = useState("0");
   const [gridBarcodeScale, setGridBarcodeScale] = useState("100");
   const [gridColOffsets, setGridColOffsets] = useState<string[]>(["0", "0", "0"]);
@@ -122,9 +122,9 @@ export default function BarcodeClient() {
       setGridTotalWidth(saved.gridTotalWidth);
       setGridColumns(saved.gridColumns);
       setGridBoxWidth(saved.gridBoxWidth ?? "33");
-      setGridBoxHeight(saved.gridBoxHeight ?? "14");
-      setGridColGap(saved.gridColGap ?? "2");
-      setGridRowGap(saved.gridRowGap ?? "2");
+      setGridBoxHeight(saved.gridBoxHeight ?? "15");
+      setGridColGap(saved.gridColGap ?? "0");
+      setGridRowGap(saved.gridRowGap ?? "3");
       setGridOffsetX(saved.gridOffsetX ?? "0");
       setGridBarcodeScale(saved.gridBarcodeScale ?? "100");
       setGridColOffsets(saved.gridColOffsets ?? ["0", "0", "0"]);
@@ -174,12 +174,12 @@ export default function BarcodeClient() {
     ? hitungPresetCustom(Number(customWidth) || 40, Number(customHeight) || 30)
     : PRESETS.find((p) => p.key === presetKey) ?? PRESETS[0];
 
-  const pageWidthMm = mode === "grid" ? Number(gridTotalWidth) || 106 : preset.widthMm;
+  const pageWidthMm = mode === "grid" ? Number(gridTotalWidth) || 99 : preset.widthMm;
 
   const kolomCount = Math.max(1, Number(gridColumns) || 3);
-  const totalWidthNum = Number(gridTotalWidth) || 106;
+  const totalWidthNum = Number(gridTotalWidth) || 99;
   const boxWidthNum = Number(gridBoxWidth) || 33;
-  const boxHeightNum = Number(gridBoxHeight) || 14;
+  const boxHeightNum = Number(gridBoxHeight) || 15;
   const colGapNum = Number(gridColGap) || 0;
   const rowGapNum = Number(gridRowGap) || 0;
   const offsetXNum = Number(gridOffsetX) || 0;
