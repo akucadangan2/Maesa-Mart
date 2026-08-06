@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
-import { Search, Printer, Trash2, X, Check } from "lucide-react";
+import { Search, Printer, Trash2, X, Check, FileSpreadsheet } from "lucide-react";
 import {
   searchBarcodeItems,
   generateBarcodeForProduct,
@@ -272,6 +272,43 @@ export default function BarcodeClient() {
 
   function hapusDariAntrian(key: string) {
     setQueue((prev) => prev.filter((q) => q.key !== key));
+  }
+
+  function escapeCsvField(value: string | number) {
+    const str = String(value);
+    if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }
+
+  function handleExportCsv() {
+    if (queue.length === 0) return;
+
+    const header = ["Barcode", "Nama Produk", "Harga", "Satuan", "Jumlah Label"];
+    const rows = queue.map((q) => [
+      q.kode_barcode ?? "",
+      q.nama_produk,
+      q.harga,
+      q.satuan,
+      q.jumlah,
+    ]);
+
+    const csvContent = [header, ...rows]
+      .map((row) => row.map(escapeCsvField).join(","))
+      .join("\r\n");
+
+    // Tambah BOM biar Excel baca karakter non-ASCII (misal nama produk
+    // dengan simbol) dengan benar, bukan cuma software CSV biasa.
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `barcode-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   const printItems = queue.flatMap((item, itemIndex) =>
@@ -783,6 +820,14 @@ export default function BarcodeClient() {
             className="border border-red-300 text-red-600 rounded-lg px-4 py-2 text-sm"
           >
             Kosongkan Daftar
+          </button>
+          <button
+            onClick={handleExportCsv}
+            disabled={queue.length === 0}
+            className="flex items-center gap-2 border border-gray-300 text-gray-700 rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+          >
+            <FileSpreadsheet size={15} />
+            Export ke Excel
           </button>
           <button
             onClick={() => window.print()}
